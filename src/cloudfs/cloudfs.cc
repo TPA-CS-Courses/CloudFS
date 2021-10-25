@@ -34,6 +34,17 @@ static struct cloudfs_state *fstate;
 FILE *logfile;
 static struct fuse_operations cloudfs_operations;
 
+static FILE *outfile;
+int get_buffer(const char *buffer, int bufferLength) {
+    return fwrite(buffer, 1, bufferLength, outfile);
+}
+
+static FILE *infile;
+int put_buffer(char *buffer, int bufferLength) {
+    fprintf(stdout, "put_buffer %d \n", bufferLength);
+    return fread(buffer, 1, bufferLength, infile);
+}
+
 //char ssd_path[MAX_PATH_LEN];
 //char fuse_path[MAX_PATH_LEN];
 //char hostname[MAX_HOSTNAME_LEN];
@@ -106,7 +117,7 @@ void *cloudfs_init(struct fuse_conn_info *conn UNUSED) {
 void cloudfs_destroy(void *data UNUSED) {
 
     cloud_delete_bucket("test");
-    cloud_print_error(); 
+    cloud_print_error();
 
     cloud_destroy();
     cloud_print_error();
