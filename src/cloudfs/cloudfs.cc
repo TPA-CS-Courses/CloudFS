@@ -123,7 +123,7 @@ static int cloudfs_error(const char *error_str) {
     //
 
     fprintf(stderr, "CloudFS Error: %s\n", error_str);
-    fprintf(logfile, "[CloudFS Error]: %s\n", error_str);
+    fprintf(logfile, "[CloudFS Error]: %s \t[ERRNO]: %d: %s\n", error_str, -ret, strerror(errno));
 
     /* FUSE always returns -errno to caller (yes, it is negative errno!) */
     return ret;
@@ -154,8 +154,13 @@ void cloudfs_destroy(void *data UNUSED) {
 
 void get_path_s(char *full_path, const char *pathname, int bufsize) {
     INFOF();
-    snprintf(full_path, bufsize, "%s%s", fstate->ssd_path, pathname + 1);
-    PF("[ssd_path] pathname is %s\n", pathname);
+    if(pathname[0] == '/'){
+        snprintf(full_path, bufsize, "%s%s", fstate->ssd_path, pathname + 1);
+    }else{
+        snprintf(full_path, bufsize, "%s%s", fstate->ssd_path, pathname);
+    }
+
+    PF("[%s]\t pathname is %s\n", __func__, pathname);
 }
 
 
@@ -275,25 +280,23 @@ int cloudfs_readdir(const char *pathname UNUSED, void *buf UNUSED, fuse_fill_dir
     INFOF();
     DIR *d;
     struct dirent *de;
-//    struct stat s;
+    char lost_found[MAX_PATH_LEN];
+    get_path_s(lost_found, "/lost+found", MAX_PATH_LEN);
     d = (DIR * )(uintptr_t)
     fi->fh;
     de = readdir(d);
     if (de == NULL) {
         return cloudfs_error("readdir failed");;
     }
-//    while (1) {
-//        memset(&s, 0, sizeof(s));
-//        s.st_ino = de->d_ino;
-//        s.st_mode = de->d_type << 12;
-//        if (filler(buf, de->d_name, &s, 0) != 0) {
-//            return -ENOMEM;
-//        }
-//        if ((de = readdir(d)) == NULL) {
-//            break;
-//        }
-//    }
     while ((de = readdir(d)) != NULL) {
+
+        char dirpath[MAX_PATH_LEN];
+        get_path_s(dirpath, de->d_name, MAX_PATH_LEN);
+        if (!strcmp(dirpath, lost_found)) {
+            //get rid of the annoying lost+found path
+            continue;
+        }
+
         struct stat st;
         memset(&st, 0, sizeof(st));
         st.st_ino = de->d_ino;
@@ -305,8 +308,8 @@ int cloudfs_readdir(const char *pathname UNUSED, void *buf UNUSED, fuse_fill_dir
     return 0;
 }
 
-int cloudfs_getxattr(const char *pathname UNUSED, const char *name UNUSED, char *value UNUSED,
-                     size_t size UNUSED) {
+int cloudfs_getxattr(const char *pathname, const char *name, char *value,
+                     size_t size) {
 
     PF("[%s]:\t pathname: %s\n", __func__, pathname);
     INFOF();
@@ -316,18 +319,23 @@ int cloudfs_getxattr(const char *pathname UNUSED, const char *name UNUSED, char 
     PF("[getxattr] path_s is %s\n", path_s);
 
 
-    TRY(lgetxattr(path_s, name, value, size));
-//    ret = lgetxattr(path_s, name, value, size);
-//    if (ret < 0) {
-//        return cloudfs_error("getxattr failed");;
-//    }
+    ret = lgetxattr(path_s, name, value, size);
+    if (ret < 0) {
+        return cloudfs_error("getxattr failed");
+    }
     return ret;
 }
 
 
-int cloudfs_setxattr(const char *path UNUSED, const char *name UNUSED, const char *value UNUSED,
+int cloudfs_setxattr(const char *pathname UNUSED, const char *name UNUSED, const char *value UNUSED,
                      size_t size UNUSED, int flags UNUSED) {
-    NOI();
+    PF("[%s]:\t pathname: %s\n", __func__, pathname);
+    INFOF();
+    int ret = 0;
+    char path_s[MAX_PATH_LEN];
+    get_path_s(path_s, pathname, MAX_PATH_LEN);
+    TRY(lsetxattr(path_s, name, value, size, flags));
+    return ret;
 }
 
 //0 for ssd
@@ -663,13 +671,25 @@ int cloudfs_start(struct cloudfs_state *state,
 
     state_ = *state;
     fstate = &state_;
-    logfile = fopen("/tmp/cloudfs.log", "w");
+    char log_path[MAX_PATH_LEN];
+    time_t now;
+    time(&now);
+
+    struct tm * timeinfo;
+
+
+
+    timeinfo = localtime (&now);
+
+
+    strftime (log_path,sizeof(log_path),"/tmp/cloudfs%Y-%m-%d-%H-%M-%S.log",timeinfo);
+    logfile = fopen(log_path, "w");
+    PF("Runtime is %s\n", ctime(&now));
+
     setvbuf(logfile, NULL, _IOLBF, 0);
     INFOF();
 //    fprintf(logfile,"\n[%s\t]Line:\n", __func__, __LINE__)
-    time_t now;
-    time(&now);
-    PF("Runtime is %s\n", ctime(&now));
+
     show_fuse_state();
 
 
