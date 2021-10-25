@@ -20,12 +20,22 @@
 #include "cloudapi.h"
 #include "dedup.h"
 #include "cloudfs.h"
+//#define SHOWINFO
 
 #define UNUSED __attribute__((unused))
 #define PF(...) fprintf(logfile,__VA_ARGS__)
+
+
+#ifdef SHOWINFO
 #define INFO() fprintf(logfile,"INFO: SSD ONLY [%s]\t Line:%d\n", __func__, __LINE__)
 #define INFOF() fprintf(logfile,"INFO: F [%s]\t Line:%d\n", __func__, __LINE__)
 #define NOI() fprintf(logfile,"INFO: NOT IMPLEMENTED [%s]\t Line:%d \n\n", __func__, __LINE__)
+#else
+#define INFO() sizeof(void)
+#define INFOF() sizeof(void)
+#define NOI() sizeof(void)
+#endif
+
 #define TRY(x) \
     if ((ret = x) < 0) { \
         ret = cloudfs_error(__func__); \
@@ -369,8 +379,6 @@ int cloudfs_mknod(const char *pathname UNUSED, mode_t mode UNUSED, dev_t dev UNU
 //    if(set_l_ret < 0){
 //        return -errno;
 //    }
-
-
     return ret;
 }
 
@@ -442,6 +450,8 @@ int cloudfs_release(const char *pathname UNUSED, struct fuse_file_info *fi UNUSE
 
             size_t size_f = statbuf.st_size;
 
+            PF("[%s]:\t file %s size: %zu\n", __func__, pathname, size_f);
+
             if (size_f > fstate->threshold) {//larger than threshold, need to move to cloud
                 PF("[%s]:\t file %s need to be moved to cloud\n", __func__, pathname);
                 // TODO
@@ -459,6 +469,11 @@ int cloudfs_release(const char *pathname UNUSED, struct fuse_file_info *fi UNUSE
             }
         } else {//not dirty
             PF("[%s]:\t file %s not dirty\n", __func__, pathname);
+            struct stat statbuf;
+            RUN_M(lstat(path_s, &statbuf));
+
+            size_t size_f = statbuf.st_size;
+            PF("[%s]:\t file %s size: %zu\n", __func__, pathname, size_f);
 
         }
 
