@@ -107,8 +107,8 @@ void cloudfs_destroy(void *data UNUSED) {
 
     cloud_delete_bucket("test");
     cloud_print_error();
-    
-    cloud_destroy();
+
+    cloud_destroy(); 
     cloud_print_error();
 }
 
