@@ -173,13 +173,13 @@ void get_path_c(char *path_c, const char *path_s) {
         }
     }
 }
-bool is_on_cloud(char *pathname){
+
+bool is_on_cloud(char *pathname) {
     int loc = ON_SSD;
-    RUN_M(get_loc(path_s, &loc));
+    get_loc(pathname, &loc);
     if (loc == ON_CLOUD) {
         return true;
-    }
-    else{
+    } else {
         return false;
     }
 }
@@ -198,7 +198,17 @@ int cloudfs_getattr(const char *pathname, struct stat *statbuf) {
     char path_s[MAX_PATH_LEN];
     get_path_s(path_s, pathname, MAX_PATH_LEN);
 
-    TRY(lstat(path_s, statbuf));
+    ret = lstat(path_s, statbuf);
+    if(ret < 0){
+        return -errno;
+    }else{
+        if (is_on_cloud(path_s)) {
+            get_from_proxy(path_s, statbuf);
+        }
+    }
+
+
+
 //    ret = lstat(path_s, statbuf);
 //    if (ret < 0) {
 //        ret = cloudfs_error("getattr failed");
@@ -530,10 +540,10 @@ int cloudfs_release2(const char *pathname UNUSED, struct fuse_file_info *fi UNUS
 }
 
 
-void cloud_put(char *path_s, char *path_c, struct stat statbuf) {
+void cloud_put(char *path_s, char *path_c, struct stat *statbuf_p) {
 
     infile = fopen(path_s, "rb");
-    cloud_put_object(BUCKET, path_c, statbuf.st_size, put_buffer);
+    cloud_put_object(BUCKET, path_c, statbuf_p->st_size, put_buffer);
     cloud_print_error();
 
     PF("[%s]:\t put %s on cloud with key: %s\n", __func__, path_s, path_c);
@@ -541,7 +551,7 @@ void cloud_put(char *path_s, char *path_c, struct stat statbuf) {
 }
 
 
-int clone_2_proxy(char *path_s, struct stat statbuf) {
+int clone_2_proxy(char *path_s, struct stat *statbuf_p) {
     int ret = 0;
 //    struct stat {
 //        dev_t     st_dev;         /* ID of device containing file */
@@ -554,20 +564,20 @@ int clone_2_proxy(char *path_s, struct stat statbuf) {
 //        off_t     st_size;        /* Total size, in bytes */
 //        blksize_t st_blksize;     /* Block size for filesystem I/O */
 //        blkcnt_t  st_blocks;      /* Number of 512B blocks allocated */
-    TRY(lsetxattr(path_s, "user.st_dev", &sp->st_dev, sizeof(dev_t), 0);
-    TRY(lsetxattr(path_s, "user.st_ino", &sp->st_ino, sizeof(ino_t), 0);
-    TRY(lsetxattr(path_s, "user.st_mode", &sp->st_mode, sizeof(mode_t), 0);
-    TRY(lsetxattr(path_s, "user.st_nlink", &sp->st_nlink, sizeof(nlink_t), 0);
-    TRY(lsetxattr(path_s, "user.st_uid", &sp->st_uid, sizeof(uid_t), 0);
-    TRY(lsetxattr(path_s, "user.st_gid", &sp->st_gid, sizeof(gid_t), 0);
-    TRY(lsetxattr(path_s, "user.st_rdev", &sp->st_rdev, sizeof(dev_t), 0);
-    TRY(lsetxattr(path_s, "user.st_size", &sp->st_size, sizeof(off_t), 0);
-    TRY(lsetxattr(path_s, "user.st_blksize", &sp->st_blksize, sizeof(blksize_t), 0);
-    TRY(lsetxattr(path_s, "user.st_blocks", &sp->st_blocks, sizeof(blkcnt_t), 0);
-    retrun ret;
+    TRY(lsetxattr(path_s, "user.st_dev", &statbuf_p->st_dev, sizeof(dev_t), 0));
+    TRY(lsetxattr(path_s, "user.st_ino", &statbuf_p->st_ino, sizeof(ino_t), 0));
+    TRY(lsetxattr(path_s, "user.st_mode", &statbuf_p->st_mode, sizeof(mode_t), 0));
+    TRY(lsetxattr(path_s, "user.st_nlink", &statbuf_p->st_nlink, sizeof(nlink_t), 0));
+    TRY(lsetxattr(path_s, "user.st_uid", &statbuf_p->st_uid, sizeof(uid_t), 0));
+    TRY(lsetxattr(path_s, "user.st_gid", &statbuf_p->st_gid, sizeof(gid_t), 0));
+    TRY(lsetxattr(path_s, "user.st_rdev", &statbuf_p->st_rdev, sizeof(dev_t), 0));
+    TRY(lsetxattr(path_s, "user.st_size", &statbuf_p->st_size, sizeof(off_t), 0));
+    TRY(lsetxattr(path_s, "user.st_blksize", &statbuf_p->st_blksize, sizeof(blksize_t), 0));
+    TRY(lsetxattr(path_s, "user.st_blocks", &statbuf_p->st_blocks, sizeof(blkcnt_t), 0));
+    return ret;
 }
 
-int get_from_proxy(char *path_s, struct stat statbuf) {
+int get_from_proxy(char *path_s, struct stat *statbuf_p) {
     int ret = 0;
 //    struct stat {
 //        dev_t     st_dev;         /* ID of device containing file */
@@ -580,17 +590,17 @@ int get_from_proxy(char *path_s, struct stat statbuf) {
 //        off_t     st_size;        /* Total size, in bytes */
 //        blksize_t st_blksize;     /* Block size for filesystem I/O */
 //        blkcnt_t  st_blocks;      /* Number of 512B blocks allocated */
-    TRY(lgetxattr(path_s, "user.st_dev", &sp->st_dev, sizeof(dev_t));
-    TRY(lgetxattr(path_s, "user.st_ino", &sp->st_ino, sizeof(ino_t));
-    TRY(lgetxattr(path_s, "user.st_mode", &sp->st_mode, sizeof(mode_t));
-    TRY(lgetxattr(path_s, "user.st_nlink", &sp->st_nlink, sizeof(nlink_t));
-    TRY(lgetxattr(path_s, "user.st_uid", &sp->st_uid, sizeof(uid_t));
-    TRY(lgetxattr(path_s, "user.st_gid", &sp->st_gid, sizeof(gid_t));
-    TRY(lgetxattr(path_s, "user.st_rdev", &sp->st_rdev, sizeof(dev_t));
-    TRY(lgetxattr(path_s, "user.st_size", &sp->st_size, sizeof(off_t));
-    TRY(lgetxattr(path_s, "user.st_blksize", &sp->st_blksize, sizeof(blksize_t));
-    TRY(lgetxattr(path_s, "user.st_blocks", &sp->st_blocks, sizeof(blkcnt_t));
-    retrun ret;
+    TRY(lgetxattr(path_s, "user.st_dev", &statbuf_p->st_dev, sizeof(dev_t)));
+    TRY(lgetxattr(path_s, "user.st_ino", &statbuf_p->st_ino, sizeof(ino_t)));
+    TRY(lgetxattr(path_s, "user.st_mode", &statbuf_p->st_mode, sizeof(mode_t)));
+    TRY(lgetxattr(path_s, "user.st_nlink", &statbuf_p->st_nlink, sizeof(nlink_t)));
+    TRY(lgetxattr(path_s, "user.st_uid", &statbuf_p->st_uid, sizeof(uid_t)));
+    TRY(lgetxattr(path_s, "user.st_gid", &statbuf_p->st_gid, sizeof(gid_t)));
+    TRY(lgetxattr(path_s, "user.st_rdev", &statbuf_p->st_rdev, sizeof(dev_t)));
+    TRY(lgetxattr(path_s, "user.st_size", &statbuf_p->st_size, sizeof(off_t)));
+    TRY(lgetxattr(path_s, "user.st_blksize", &statbuf_p->st_blksize, sizeof(blksize_t)));
+    TRY(lgetxattr(path_s, "user.st_blocks", &statbuf_p->st_blocks, sizeof(blkcnt_t)));
+    return ret;
 }
 
 int cloudfs_release(const char *pathname UNUSED, struct fuse_file_info *fi UNUSED) {
@@ -662,14 +672,14 @@ int cloudfs_release(const char *pathname UNUSED, struct fuse_file_info *fi UNUSE
 
                 PF("[line: %d]:\t", __LINE__);
 
-                cloud_put(path_s, path_c, statbuf);
+                cloud_put(path_s, path_c, &statbuf);
                 PF("[line: %d]:\t", __LINE__);
                 FILE *fd = fopen(path_s, "w");
                 fclose(fd);
                 //clear all content;
                 set_loc(path_s, ON_CLOUD);
                 set_dirty(path_s, N_DIRTY);
-                RUN_M(clone_2_proxy(path_s, statbuf));
+                RUN_M(clone_2_proxy(path_s, &statbuf));
 
             } else {//remain on ssd
                 PF("[%s]:\t clean file %s put on ssd\n", __func__, pathname);

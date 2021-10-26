@@ -20,6 +20,16 @@ struct cloudfs_state {
 
 int cloudfs_start(struct cloudfs_state *state,
                   const char *fuse_runtime_name);
+int get_loc(const char *pathname, int *value);
+int set_loc(const char *pathname, int *value);
+int get_dirty(const char *pathname, int *value);
+int set_dirty(const char *pathname, int value);
+int clone_2_proxy(char *path_s, struct stat *statbuf_p);
+int get_from_proxy(char *path_s, struct stat *statbuf_p);
+void cloud_put(char *path_s, char *path_c, struct stat *statbuf_p);
+bool is_on_cloud(char *pathname);
+int put_buffer(char *buffer, int bufferLength);
+int get_buffer(const char *buffer, int bufferLength);
 
 void cloudfs_get_fullpath(const char *path, char *fullpath);
 
