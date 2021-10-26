@@ -276,39 +276,100 @@ int cloudfs_utimens(const char *pathname, const struct timespec tv[2]) {
 int cloudfs_readdir(const char *pathname UNUSED, void *buf UNUSED, fuse_fill_dir_t filler UNUSED, off_t offset UNUSED,
                     struct fuse_file_info *fi UNUSED) {
 
-    PF("[%s]:\t pathname: %s\n", __func__, pathname);
-    INFOF();
-    DIR *d;
+//    PF("[%s]:\t pathname: %s\n", __func__, pathname);
+//    INFOF();
+//    DIR *d;
+//    struct dirent *de;
+//    char lost_found[MAX_PATH_LEN];
+//    get_path_s(lost_found, "/lost+found", MAX_PATH_LEN);
+//    d = (DIR * )(uintptr_t)
+//    fi->fh;
+//    de = readdir(d);
+//    if (de == NULL) {
+//        return cloudfs_error("readdir failed");;
+//    }
+
+//    PF("[%s]: pathname: %s\n", __func__, pathname);
+//    INFOF();
+//    DIR *d;
+//    char lost_found[MAX_PATH_LEN];
+//    get_path_s(lost_found, "/lost+found", MAX_PATH_LEN);
+//    struct dirent *de;
+//    struct stat s;
+//    d = (DIR * )(uintptr_t)
+//    fi->fh;
+//    de = readdir(d);
+//    if (de == NULL) {
+//        return cloudfs_error("readdir failed");;
+//    }
+//    while (1) {
+//
+//        char dirpath[MAX_PATH_LEN];
+//        get_path_s(dirpath, de->d_name, MAX_PATH_LEN);
+//        if (!strcmp(dirpath, lost_found)) {
+//            //get rid of the annoying lost+found path
+//            continue;
+//        }
+//        memset(&s, 0, sizeof(s));
+//        s.st_ino = de->d_ino;
+//        s.st_mode = de->d_type << 12;
+//        if (filler(buf, de->d_name, &s, 0) != 0) {
+//            return -ENOMEM;
+//        }
+//        if ((de = readdir(d)) == NULL) {
+//            break;
+//        }
+//    }
+
+
+//    while ((de = readdir(d)) != NULL) {
+//
+//        char dirpath[MAX_PATH_LEN];
+//        get_path_s(dirpath, de->d_name, MAX_PATH_LEN);
+//        if (!strcmp(dirpath, lost_found)) {
+//            //get rid of the annoying lost+found path
+//            continue;
+//        }
+//
+//        struct stat st;
+//        memset(&st, 0, sizeof(st));
+//        st.st_ino = de->d_ino;
+//        st.st_mode = de->d_type << 12;
+//        if (filler(buf, de->d_name, &st, 0)){
+//            break;
+//        }
+//        PF("[%s]:\t buf: %s\n", __func__, buf);
+//
+//    }
+//    closedir(d);
+//    return 0;
+
+
+    int ret = 0;
+    DIR *dp;
     struct dirent *de;
     char lost_found[MAX_PATH_LEN];
     get_path_s(lost_found, "/lost+found", MAX_PATH_LEN);
-    d = (DIR * )(uintptr_t)
-    fi->fh;
-    de = readdir(d);
-    if (de == NULL) {
-        return cloudfs_error("readdir failed");;
-    }
-    while ((de = readdir(d)) != NULL) {
 
+    dp = (DIR *) (uintptr_t) fi->fh;
+    de = readdir(dp);
+    if (de == 0) {
+        cloudfs_error(__func__);
+        //supress enomem
+        return 0;
+    }
+    do {
         char dirpath[MAX_PATH_LEN];
         get_path_s(dirpath, de->d_name, MAX_PATH_LEN);
         if (!strcmp(dirpath, lost_found)) {
-            //get rid of the annoying lost+found path
             continue;
         }
 
-        struct stat st;
-        memset(&st, 0, sizeof(st));
-        st.st_ino = de->d_ino;
-        st.st_mode = de->d_type << 12;
-        if (filler(buf, de->d_name, &st, 0)){
-            break;
+        if (filler(buf, de->d_name, NULL, 0) != 0) {
+            return -ENOMEM;
         }
-        PF("[%s]:\t buf: %s\n", __func__, buf);
-
-    }
-    closedir(d);
-    return 0;
+    } while ((de = readdir(dp)) != NULL);
+    return ret;
 }
 
 int cloudfs_getxattr(const char *pathname, const char *name, char *value,
