@@ -20,7 +20,8 @@
 #include "cloudapi.h"
 #include "dedup.h"
 #include "cloudfs.h"
-//#define SHOWINFO
+
+#define SHOWINFO
 
 #define UNUSED __attribute__((unused))
 #define PF(...) fprintf(logfile,__VA_ARGS__)
@@ -63,13 +64,15 @@ static struct fuse_operations cloudfs_operations;
 static FILE *outfile;
 
 int get_buffer(const char *buffer, int bufferLength) {
+
+    PF("[%s]get buffer %d\n",__func__, bufferLength);
     return fwrite(buffer, 1, bufferLength, outfile);
 }
 
 static FILE *infile;
 
 int put_buffer(char *buffer, int bufferLength) {
-    fprintf(stdout, "put_buffer %d \n", bufferLength);
+    PF("[%s]put buffer %d\n",__func__, bufferLength);
     return fread(buffer, 1, bufferLength, infile);
 }
 
@@ -135,17 +138,25 @@ static int cloudfs_error(const char *error_str) {
  *
  */
 void *cloudfs_init(struct fuse_conn_info *conn UNUSED) {
+
+    char temp_dir[MAX_PATH_LEN] = ".tempfiles";
+
+    char temp_dir_ssd[MAX_PATH_LEN];
+
+
+    snprintf(temp_dir_ssd, MAX_PATH_LEN, "%s%s", fstate->ssd_path, temp_dir);
     cloud_init(state_.hostname);
     cloud_print_error();
 
-    cloud_create_bucket("test");
+    cloud_create_bucket(BUCKET);
     cloud_print_error();
+    mkdir(temp_dir_ssd, S_IRWXU | S_IRWXG | S_IROTH | S_IXOTH);
     return NULL;
 }
 
 void cloudfs_destroy(void *data UNUSED) {
 
-    cloud_delete_bucket("test");
+    cloud_delete_bucket(BUCKET);
     cloud_print_error();
 
     cloud_destroy();
@@ -163,11 +174,41 @@ void get_path_s(char *full_path, const char *pathname, int bufsize) {
     PF("[%s]\t pathname is %s\n", __func__, pathname);
 }
 
+void get_path_t(char *path_t, const char *pathname, int bufsize) {
+    INFOF();
+    char path_s[MAX_PATH_LEN];
+    char path_c[MAX_PATH_LEN];
+    char temp_dir[MAX_PATH_LEN] = ".tempfiles";
+    if (pathname[0] == '/') {
+        snprintf(path_s, bufsize, "%s%s", fstate->ssd_path, pathname + 1);
+    } else {
+        snprintf(path_s, bufsize, "%s%s", fstate->ssd_path, pathname);
+    }
+
+    strcpy(path_c, path_s);
+    for (int i = 0; path_c[i] != '\0' ; i++) {
+        if (path_c[i] == '/') {
+            path_c[i] = '+';
+        }
+    }
+
+
+
+    snprintf(path_t, bufsize, "%s%s/%s", fstate->ssd_path, temp_dir, path_c + 1);
+
+
+    PF("[%s]\t path_t is %s\n", __func__, path_t);
+
+
+
+    PF("[%s]\t pathname is %s\n", __func__, pathname);
+}
+
 
 void get_path_c(char *path_c, const char *path_s) {
 
     strcpy(path_c, path_s);
-    for (int i = 0; path_c[i] != '\0' || i < MAX_PATH_LEN; i++) {
+    for (int i = 0; path_c[i] != '\0'; i++) {
         if (path_c[i] == '/') {
             path_c[i] = '+';
         }
@@ -199,9 +240,9 @@ int cloudfs_getattr(const char *pathname, struct stat *statbuf) {
     get_path_s(path_s, pathname, MAX_PATH_LEN);
 
     ret = lstat(path_s, statbuf);
-    if(ret < 0){
+    if (ret < 0) {
         return -errno;
-    }else{
+    } else {
         if (is_on_cloud(path_s)) {
             get_from_proxy(path_s, statbuf);
         }
@@ -226,12 +267,43 @@ int cloudfs_open(const char *pathname, struct fuse_file_info *fi) {
     char path_s[MAX_PATH_LEN];
 //    char path_c[MAX_PATH_LEN];
     get_path_s(path_s, pathname, MAX_PATH_LEN);
+
 //    get_path_c(path_c, path_s);
-    fd = open(path_s, fi->flags);
-    if (fd < 0) {
-        return cloudfs_error(__func__);
+
+    if (is_on_cloud(path_s)) {
+        PF("[%s]:\t downloading from cloud\n", __func__, pathname);
+        char path_c[MAX_PATH_LEN];
+        char path_t[MAX_PATH_LEN];
+        get_path_c(path_c, path_s);
+        get_path_t(path_t, pathname, MAX_PATH_LEN);
+        cloud_get(path_t, path_c);
+        PF("[%s]:\t get statbuf of %s\n", __func__, path_t);
+        struct stat statbuf;
+        RUN_M(lstat(path_t, &statbuf));
+
+        size_t size_f = statbuf.st_size;
+        ino_t ino_f = statbuf.st_ino;
+
+        PF("[%s]:\t opening %s with flag %d\n", __func__, path_t, fi->flags);
+        fd = open(path_t, O_RDWR);
+
+        fi->fh = fd;
+
+        PF("[%s]:\t open returned %d\t file is %s \t size is %zu \t st_ino is %zu\n", __func__, fd, path_t, size_f, ino_f);
+        if (fd < 0) {
+            return cloudfs_error(__func__);
+        }
+
+        return 0;
+    } else {
+        PF("[%s]:\t opening %s\n", __func__, path_s);
+        fd = open(path_s, fi->flags);
+        if (fd < 0) {
+            return cloudfs_error(__func__);
+        }
+        fi->fh = fd;
+        return 0;
     }
-    fi->fh = fd;
     return 0;
 }
 
@@ -460,7 +532,7 @@ int cloudfs_mknod(const char *pathname UNUSED, mode_t mode UNUSED, dev_t dev UNU
 
     PF("[%s]:\t pathname: %s\n", __func__, pathname);
 
-    INFO();
+    INFOF();
     int ret = 0;
     char path_s[MAX_PATH_LEN];
     get_path_s(path_s, pathname, MAX_PATH_LEN);
@@ -483,6 +555,8 @@ int cloudfs_read(const char *pathname UNUSED, char *buf UNUSED, size_t size UNUS
     int ret = 0;
     char path_s[MAX_PATH_LEN];
     get_path_s(path_s, pathname, MAX_PATH_LEN);
+
+    PF("[%s]:\t pread(fd: %d)\t file is %s\n", __func__, fi->fh, path_s);
     TRY(pread(fi->fh, buf, size, offset));
     return ret;
 }
@@ -546,8 +620,63 @@ void cloud_put(char *path_s, char *path_c, struct stat *statbuf_p) {
     cloud_put_object(BUCKET, path_c, statbuf_p->st_size, put_buffer);
     cloud_print_error();
 
-    PF("[%s]:\t put %s on cloud with key: %s\n", __func__, path_s, path_c);
+    PF("[%s]:\t put %s on cloud with key:[%s], size : %zu\n", __func__, path_s, path_c, statbuf_p->st_size);
     fclose(infile);
+
+//    FILE *fp;
+//    char ch;
+//    fp=fopen(path_s,"r");
+//    int i;
+//    PF("showing file content %s: ", path_s);
+//    while((ch=fgetc(fp))!=EOF && i < 25)
+//    {
+//        PF("%c", ch);
+//    }
+//
+//    PF("\n");
+//    fclose(fp);
+
+//    outfile = fopen("/tmp/peek", "wb");
+//    cloud_get_object(BUCKET, path_c, get_buffer);
+//    cloud_print_error();
+//    fclose(outfile);
+//
+//    fp=fopen("/tmp/peek","r");
+//    PF("PEEKING file content %s @ cloud %s: ", path_s, path_c);
+//    while((ch=fgetc(fp))!=EOF && i < 25)
+//    {
+//        PF("%c", ch);
+//    }
+//
+//    PF("\n");
+//    fclose(fp);
+
+
+}
+
+void cloud_get(char *path_s, char *path_c) {
+
+    PF("[%s]:\t path_s = [%s]\n", __func__, path_s);
+    outfile = fopen(path_s, "wb");
+    cloud_get_object(BUCKET, path_c, get_buffer);
+    cloud_print_error();
+    PF("[%s]:\t get %s(FD:%d) from cloud with key:[%s]\n", __func__, path_s, outfile, path_c);
+    PF("[%s]:\t return\n", __func__);
+    fclose(outfile);
+
+
+    FILE *fp;
+    char ch;
+    fp=fopen(path_s,"r");
+    int i;
+    PF("[%s]: showing file content %s: ", __func__, path_s);
+    while((ch=fgetc(fp))!=EOF && i < 25)
+    {
+        PF("%c", ch);
+    }
+
+    PF("\n");
+    fclose(fp);
 }
 
 
@@ -606,14 +735,16 @@ int get_from_proxy(char *path_s, struct stat *statbuf_p) {
 int cloudfs_release(const char *pathname UNUSED, struct fuse_file_info *fi UNUSED) {
 
     PF("[%s]:\t pathname: %s\n", __func__, pathname);
-    INFO();
+    INFOF();
 
     char path_s[MAX_PATH_LEN];
     char path_c[MAX_PATH_LEN];
+    char path_t[MAX_PATH_LEN];
     get_path_s(path_s, pathname, MAX_PATH_LEN);
     get_path_c(path_c, path_s);
+    get_path_t(path_t, pathname, MAX_PATH_LEN);
 
-    PF("[%s]:\t pathname = %s \t path_s = %s \t path_c = %s\n", __func__, pathname, path_s, path_c);
+    PF("[%s]:\t pathname = %s \t path_s = %s \t path_c = %s \t path_t = %s\n", __func__, pathname, path_s, path_c, path_t);
 //    size_t size_f = 0;
 
 
@@ -721,13 +852,24 @@ int cloudfs_release(const char *pathname UNUSED, struct fuse_file_info *fi UNUSE
 
             }
         } else {//not dirty
-            NOI();
+
+            PF("[%s]:\t clean file %s stay on cloud\n", __func__, pathname);
+//            NOI();
             // TODO
             // TODO
             // TODO
             // TODO
             // TODO
 
+
+            struct stat statbuf;
+            RUN_M(lstat(path_s, &statbuf));
+
+            FILE *fd = fopen(path_s, "w");
+            fclose(fd);
+            set_loc(path_s, ON_CLOUD);
+            set_dirty(path_s, N_DIRTY);
+            RUN_M(clone_2_proxy(path_s, &statbuf));
         }
     } else {
         return cloudfs_error("release failed");
@@ -860,7 +1002,7 @@ int cloudfs_start(struct cloudfs_state *state,
     // can be found at the following URL:
     // --- https://libfuse.github.io/doxygen/structfuse__operations.html
 
-    cloudfs_operations.init = cloudfs_init;
+//    cloudfs_operations.init = cloudfs_init;
     cloudfs_operations.destroy = cloudfs_destroy;
     cloudfs_operations.getattr = cloudfs_getattr;
     cloudfs_operations.mkdir = cloudfs_mkdir;

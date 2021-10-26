@@ -18,15 +18,21 @@ struct cloudfs_state {
     char no_dedup;
 };
 
+int get_buffer(const char *buffer, int bufferLength);
+int put_buffer(char *buffer, int bufferLength);
 int cloudfs_start(struct cloudfs_state *state,
                   const char *fuse_runtime_name);
 int get_loc(const char *pathname, int *value);
 int set_loc(const char *pathname, int *value);
 int get_dirty(const char *pathname, int *value);
 int set_dirty(const char *pathname, int value);
+void get_path_t(char *path_t, const char *pathname, int bufsize);
+void get_path_s(char *full_path, const char *pathname, int bufsize);
+void get_path_c(char *path_c, const char *path_s);
 int clone_2_proxy(char *path_s, struct stat *statbuf_p);
 int get_from_proxy(char *path_s, struct stat *statbuf_p);
 void cloud_put(char *path_s, char *path_c, struct stat *statbuf_p);
+void cloud_get(char *path_s, char *path_c);
 bool is_on_cloud(char *pathname);
 int put_buffer(char *buffer, int bufferLength);
 int get_buffer(const char *buffer, int bufferLength);

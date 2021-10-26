@@ -67,7 +67,7 @@ int test() {
   cloud_print_error();
 
   printf("List bucket test:\n");
-  cloud_list_bucket("test", list_bucket);
+  'cloud_list_bucket'("test", list_bucket);
 
   printf("Get object:\n");
   outfile = fopen("/tmp/README", "wb");

@@ -28,7 +28,11 @@
 #include <unistd.h>
 
 #include "cloudapi.h"
+
 #define UNUSED __attribute__((unused))
+
+#define S3PF(...) fprintf(s3logfile,__VA_ARGS__)
+FILE *s3logfile;
 
 #if CLOUD_LOCAL_DEBUG
 
@@ -48,15 +52,14 @@ static const char secretAccessKeyG[16] = "";
 // Request results, saved as globals -------------------------------------------
 
 static int statusG = 0;
-static char errorDetailsG[4096] = { 0 };
+static char errorDetailsG[4096] = {0};
 
 // response properties callback ------------------------------------------------
 
 // This callback does the same thing for every request type: prints out the
 // properties if the user has requested them to be so
 static S3Status responsePropertiesCallback
-    (const S3ResponseProperties *properties, void *callbackData)
-{
+        (const S3ResponseProperties *properties, void *callbackData) {
     (void) callbackData;
 
     if (!showResponsePropertiesG) {
@@ -69,12 +72,12 @@ static S3Status responsePropertiesCallback
             printf("%s: %s\n", name, properties-> field);          \
         }                                                          \
     } while (0)
-    
+
     print_nonnull("Content-Type", contentType);
     print_nonnull("Request-Id", requestId);
     print_nonnull("Request-Id-2", requestId2);
     if (properties->contentLength > 0) {
-        printf("Content-Length: %lld\n", 
+        printf("Content-Length: %lld\n",
                (unsigned long long) properties->contentLength);
     }
     print_nonnull("Server", server);
@@ -101,9 +104,8 @@ static S3Status responsePropertiesCallback
 // This callback does the same thing for every request type: saves the status
 // and error stuff in global variables
 static void responseCompleteCallback(S3Status status,
-                                     const S3ErrorDetails *error, 
-                                     void *callbackData)
-{
+                                     const S3ErrorDetails *error,
+                                     void *callbackData) {
     (void) callbackData;
 
     statusG = status;
@@ -128,8 +130,8 @@ static void responseCompleteCallback(S3Status status,
                         "%s", "  Extra Details:\n");
         int i;
         for (i = 0; i < error->extraDetailsCount; i++) {
-            len += snprintf(&(errorDetailsG[len]), 
-                            sizeof(errorDetailsG) - len, "    %s: %s\n", 
+            len += snprintf(&(errorDetailsG[len]),
+                            sizeof(errorDetailsG) - len, "    %s: %s\n",
                             error->extraDetails[i].name,
                             error->extraDetails[i].value);
         }
@@ -137,92 +139,91 @@ static void responseCompleteCallback(S3Status status,
 }
 
 
-S3Status cloud_init(const char* hostname) {
-  return S3_initialize("s3", S3_INIT_ALL, hostname);
+S3Status cloud_init(const char *hostname) {
+    s3logfile = fopen("/tmp/s3log.log", "w");
+    return S3_initialize("s3", S3_INIT_ALL, hostname);
 }
 
 void cloud_destroy() {
-  S3_deinitialize();
+    S3_deinitialize();
 }
 
-void cloud_print_error()
-{
-  if (statusG < S3StatusErrorAccessDenied) {
-    fprintf(stderr, "Return status: %s\n", S3_get_status_name(static_cast<S3Status>(statusG)));
-  }
-  else {
-    fprintf(stderr, "Return status: %s\n", S3_get_status_name(static_cast<S3Status>(statusG)));
-    fprintf(stderr, "%s\n", errorDetailsG);
-  }
+void cloud_print_error() {
+    if (statusG < S3StatusErrorAccessDenied) {
+        S3PF("Return status: %s\n", S3_get_status_name(static_cast<S3Status>(statusG)));
+        fprintf(stderr, "Return status: %s\n", S3_get_status_name(static_cast<S3Status>(statusG)));
+    } else {
+
+        S3PF("Return status: %s\n", S3_get_status_name(static_cast<S3Status>(statusG)));
+
+        S3PF( "%s\n", errorDetailsG);
+        fprintf(stderr, "Return status: %s\n", S3_get_status_name(static_cast<S3Status>(statusG)));
+        fprintf(stderr, "%s\n", errorDetailsG);
+    }
 }
 
 // List Services --------------------------------------------------------------
 
-typedef struct list_service_data
-{
-  list_service_filler_t filler;
+typedef struct list_service_data {
+    list_service_filler_t filler;
 } list_service_data;
 
 
-static S3Status listServiceCallback(const char *ownerId UNUSED, 
+static S3Status listServiceCallback(const char *ownerId UNUSED,
                                     const char *ownerDisplayName UNUSED,
                                     const char *bucketName,
-                                    int64_t creationDate UNUSED, void *callbackData)
-{
-  list_service_data *data = (list_service_data *) callbackData;
+                                    int64_t creationDate UNUSED, void *callbackData) {
+    list_service_data *data = (list_service_data *) callbackData;
 
-  data->filler(bucketName);
+    data->filler(bucketName);
 
-  return S3StatusOK;
+    return S3StatusOK;
 }
 
-S3Status cloud_list_service(list_service_filler_t filler)
-{
-  list_service_data data;
+S3Status cloud_list_service(list_service_filler_t filler) {
+    list_service_data data;
 
-  data.filler = filler;
+    data.filler = filler;
 
-  S3ListServiceHandler listServiceHandler =
-  {
-    { &responsePropertiesCallback, &responseCompleteCallback },
-    &listServiceCallback
-  };
+    S3ListServiceHandler listServiceHandler =
+            {
+                    {&responsePropertiesCallback, &responseCompleteCallback},
+                    &listServiceCallback
+            };
 
-  S3_list_service(protocolG, accessKeyIdG, secretAccessKeyG, 0, 0, 
-                  &listServiceHandler, &data);
+    S3_list_service(protocolG, accessKeyIdG, secretAccessKeyG, 0, 0,
+                    &listServiceHandler, &data);
 
-  return static_cast<S3Status>(statusG);
+    return static_cast<S3Status>(statusG);
 }
-
 
 
 S3Status cloud_create_bucket(const char *bucketName) {
-  S3ResponseHandler responseHandler =
-  {
-    &responsePropertiesCallback, &responseCompleteCallback
-  };
+    S3ResponseHandler responseHandler =
+            {
+                    &responsePropertiesCallback, &responseCompleteCallback
+            };
 
-  S3_create_bucket(protocolG, accessKeyIdG, secretAccessKeyG,
-                   0, bucketName, cannedAcl, 0, 0,
-                   &responseHandler, 0);
-  return static_cast<S3Status>(statusG);
+    S3_create_bucket(protocolG, accessKeyIdG, secretAccessKeyG,
+                     0, bucketName, cannedAcl, 0, 0,
+                     &responseHandler, 0);
+    return static_cast<S3Status>(statusG);
 }
 
 S3Status cloud_delete_bucket(const char *bucketName) {
-  S3ResponseHandler responseHandler =
-  {
-    &responsePropertiesCallback, &responseCompleteCallback
-  };
+    S3ResponseHandler responseHandler =
+            {
+                    &responsePropertiesCallback, &responseCompleteCallback
+            };
 
-  S3_delete_bucket(protocolG, uriStyleG, accessKeyIdG, secretAccessKeyG,
-                   0, bucketName, 0, &responseHandler, 0);
-  return static_cast<S3Status>(statusG);
+    S3_delete_bucket(protocolG, uriStyleG, accessKeyIdG, secretAccessKeyG,
+                     0, bucketName, 0, &responseHandler, 0);
+    return static_cast<S3Status>(statusG);
 }
 
 // List bucket ----------------------------------------------------------------
 
-typedef struct list_bucket_callback_data
-{
+typedef struct list_bucket_callback_data {
     int isTruncated;
     char nextMarker[1024];
     int keyCount;
@@ -230,14 +231,13 @@ typedef struct list_bucket_callback_data
 } list_bucket_callback_data;
 
 static S3Status listBucketCallback(int isTruncated, const char *nextMarker,
-                                   int contentsCount, 
+                                   int contentsCount,
                                    const S3ListBucketContent *contents,
                                    int commonPrefixesCount UNUSED,
                                    const char **commonPrefixes UNUSED,
-                                   void *callbackData)
-{
-    list_bucket_callback_data *data = 
-        (list_bucket_callback_data *) callbackData;
+                                   void *callbackData) {
+    list_bucket_callback_data *data =
+            (list_bucket_callback_data *) callbackData;
 
     data->isTruncated = isTruncated;
     // This is tricky.  S3 doesn't return the NextMarker if there is no
@@ -248,10 +248,9 @@ static S3Status listBucketCallback(int isTruncated, const char *nextMarker,
         nextMarker = contents[contentsCount - 1].key;
     }
     if (nextMarker) {
-        snprintf(data->nextMarker, sizeof(data->nextMarker), "%s", 
+        snprintf(data->nextMarker, sizeof(data->nextMarker), "%s",
                  nextMarker);
-    }
-    else {
+    } else {
         data->nextMarker[0] = 0;
     }
 
@@ -267,44 +266,43 @@ static S3Status listBucketCallback(int isTruncated, const char *nextMarker,
 }
 
 S3Status cloud_list_bucket(const char *bucketName, list_bucket_filler_t filler) {
-  S3BucketContext bucketContext =
-  {
-    0,
-    bucketName,
-    protocolG,
-    uriStyleG,
-    accessKeyIdG,
-    secretAccessKeyG
-  };
+    S3BucketContext bucketContext =
+            {
+                    0,
+                    bucketName,
+                    protocolG,
+                    uriStyleG,
+                    accessKeyIdG,
+                    secretAccessKeyG
+            };
 
-  S3ListBucketHandler listBucketHandler =
-  {
-    { &responsePropertiesCallback, &responseCompleteCallback },
-    &listBucketCallback
-  };
+    S3ListBucketHandler listBucketHandler =
+            {
+                    {&responsePropertiesCallback, &responseCompleteCallback},
+                    &listBucketCallback
+            };
 
-  list_bucket_callback_data data;
+    list_bucket_callback_data data;
 
-  const char *prefix = 0, *marker = 0, *delimiter = 0;
-  int maxkeys = 0;
-  snprintf(data.nextMarker, sizeof(data.nextMarker), "%s", marker);
-  data.filler = filler;
+    const char *prefix = 0, *marker = 0, *delimiter = 0;
+    int maxkeys = 0;
+    snprintf(data.nextMarker, sizeof(data.nextMarker), "%s", marker);
+    data.filler = filler;
 
-  do {
-    data.isTruncated = 0;
-    S3_list_bucket(&bucketContext, prefix, data.nextMarker,
-                   delimiter, maxkeys, 0, &listBucketHandler, &data);
-    if (statusG != S3StatusOK) {
-        break;
-    }
-  } while (data.isTruncated);
+    do {
+        data.isTruncated = 0;
+        S3_list_bucket(&bucketContext, prefix, data.nextMarker,
+                       delimiter, maxkeys, 0, &listBucketHandler, &data);
+        if (statusG != S3StatusOK) {
+            break;
+        }
+    } while (data.isTruncated);
 
-  return static_cast<S3Status>(statusG);
+    return static_cast<S3Status>(statusG);
 }
 
 // Put object -----------------------------------------------------------------
-typedef struct put_object_callback_data
-{
+typedef struct put_object_callback_data {
     uint64_t offset;
     uint64_t remainingLength;
     uint64_t contentLength;
@@ -313,11 +311,10 @@ typedef struct put_object_callback_data
 } put_object_callback_data;
 
 static int putObjectDataCallback(int bufferSize, char *buffer,
-                                 void *callbackData)
-{
-    put_object_callback_data *data = 
-        (put_object_callback_data *) callbackData;
-    
+                                 void *callbackData) {
+    put_object_callback_data *data =
+            (put_object_callback_data *) callbackData;
+
     int ret = 0;
 
     if (data->remainingLength) {
@@ -332,10 +329,10 @@ static int putObjectDataCallback(int bufferSize, char *buffer,
     if (data->remainingLength && !data->noStatus) {
         // Avoid a weird bug in MingW, which won't print the second integer
         // value properly when it's in the same call, so print separately
-        printf("%llu bytes remaining ", 
+        printf("%llu bytes remaining ",
                (unsigned long long) data->remainingLength);
         printf("(%d%% complete) ...\n",
-               (int) (((data->contentLength - 
+               (int) (((data->contentLength -
                         data->remainingLength) * 100) /
                       data->contentLength));
     }
@@ -347,33 +344,33 @@ S3Status cloud_put_object(const char *bucketName, const char *key,
                           uint64_t contentLength, put_filler_t filler) {
 
     S3BucketContext bucketContext =
-    {
-        0,
-        bucketName,
-        protocolG,
-        uriStyleG,
-        accessKeyIdG,
-        secretAccessKeyG
-    };
+            {
+                    0,
+                    bucketName,
+                    protocolG,
+                    uriStyleG,
+                    accessKeyIdG,
+                    secretAccessKeyG
+            };
 
     S3PutProperties putProperties =
-    {
-        NULL, 
-        NULL,
-        NULL,
-        NULL,
-        NULL,
-        -1,
-        cannedAcl,
-        0,
-        NULL 
-    };
+            {
+                    NULL,
+                    NULL,
+                    NULL,
+                    NULL,
+                    NULL,
+                    -1,
+                    cannedAcl,
+                    0,
+                    NULL
+            };
 
     S3PutObjectHandler putObjectHandler =
-    {
-        { &responsePropertiesCallback, &responseCompleteCallback },
-        &putObjectDataCallback
-    };
+            {
+                    {&responsePropertiesCallback, &responseCompleteCallback},
+                    &putObjectDataCallback
+            };
 
     put_object_callback_data data;
 
@@ -391,73 +388,72 @@ S3Status cloud_put_object(const char *bucketName, const char *key,
 // Get object -----------------------------------------------------------------
 
 static S3Status getObjectDataCallback(int bufferSize, const char *buffer,
-                                      void *callbackData)
-{
+                                      void *callbackData) {
     get_filler_t filler = (get_filler_t) callbackData;
 
     int wrote = filler(buffer, (uint64_t) bufferSize);
 
-    return ((wrote <  bufferSize) ? 
+    return ((wrote < bufferSize) ?
             S3StatusAbortedByCallback : S3StatusOK);
 }
 
 S3Status cloud_get_object(const char *bucketName, const char *key,
-                    get_filler_t filler) {
+                          get_filler_t filler) {
 
-  uint64_t startByte = 0, byteCount = 0;
-  int64_t ifModifiedSince = -1, ifNotModifiedSince = -1;
-  const char *ifMatch = 0, *ifNotMatch = 0;
+    uint64_t startByte = 0, byteCount = 0;
+    int64_t ifModifiedSince = -1, ifNotModifiedSince = -1;
+    const char *ifMatch = 0, *ifNotMatch = 0;
 
-  S3BucketContext bucketContext =
-  {
-      0,
-      bucketName,
-      protocolG,
-      uriStyleG,
-      accessKeyIdG,
-      secretAccessKeyG
-  };
+    S3BucketContext bucketContext =
+            {
+                    0,
+                    bucketName,
+                    protocolG,
+                    uriStyleG,
+                    accessKeyIdG,
+                    secretAccessKeyG
+            };
 
-  S3GetConditions getConditions =
-  {
-      ifModifiedSince,
-      ifNotModifiedSince,
-      ifMatch,
-      ifNotMatch
-  };
+    S3GetConditions getConditions =
+            {
+                    ifModifiedSince,
+                    ifNotModifiedSince,
+                    ifMatch,
+                    ifNotMatch
+            };
 
-  S3GetObjectHandler getObjectHandler =
-  {
-      { &responsePropertiesCallback, &responseCompleteCallback },
-      &getObjectDataCallback
-  };
+    S3GetObjectHandler getObjectHandler =
+            {
+                    {&responsePropertiesCallback, &responseCompleteCallback},
+                    &getObjectDataCallback
+            };
 
-  S3_get_object(&bucketContext, key, &getConditions, startByte,
-                byteCount, 0, &getObjectHandler, reinterpret_cast<void*>(filler));
+    S3_get_object(&bucketContext, key, &getConditions, startByte,
+                  byteCount, 0, &getObjectHandler, reinterpret_cast<void *>(filler));
 
-  return static_cast<S3Status>(statusG);
+    return static_cast<S3Status>(statusG);
 }
 
 S3Status cloud_delete_object(const char *bucketName, const char *key) {
-  S3BucketContext bucketContext =
-  {
-      0,
-      bucketName,
-      protocolG,
-      uriStyleG,
-      accessKeyIdG,
-      secretAccessKeyG
-  };
+    S3BucketContext bucketContext =
+            {
+                    0,
+                    bucketName,
+                    protocolG,
+                    uriStyleG,
+                    accessKeyIdG,
+                    secretAccessKeyG
+            };
 
-  S3ResponseHandler responseHandler =
-  { 
-      0,
-      &responseCompleteCallback
-  };
+    S3ResponseHandler responseHandler =
+            {
+                    0,
+                    &responseCompleteCallback
+            };
 
-  S3_delete_object(&bucketContext, key, 0, &responseHandler, 0);
+    S3_delete_object(&bucketContext, key, 0, &responseHandler, 0);
 
-  return static_cast<S3Status>(statusG);
+    return static_cast<S3Status>(statusG);
 }
 
 #endif
