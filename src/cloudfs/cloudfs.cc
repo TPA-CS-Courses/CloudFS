@@ -26,14 +26,14 @@
 #define PF(...) fprintf(logfile,__VA_ARGS__)
 
 
+#define NOI() fprintf(logfile,"INFO: NOT IMPLEMENTED [%s]\t Line:%d \n\n", __func__, __LINE__)
+
 #ifdef SHOWINFO
 #define INFO() fprintf(logfile,"INFO: SSD ONLY [%s]\t Line:%d\n", __func__, __LINE__)
 #define INFOF() fprintf(logfile,"INFO: F [%s]\t Line:%d\n", __func__, __LINE__)
-#define NOI() fprintf(logfile,"INFO: NOT IMPLEMENTED [%s]\t Line:%d \n\n", __func__, __LINE__)
 #else
 #define INFO() sizeof(void)
 #define INFOF() sizeof(void)
-#define NOI() sizeof(void)
 #endif
 
 #define TRY(x) \
@@ -458,7 +458,12 @@ int cloudfs_read(const char *pathname UNUSED, char *buf UNUSED, size_t size UNUS
                  struct fuse_file_info *fi) {
 
     PF("[%s]:\t pathname: %s\n", __func__, pathname);
-    NOI();
+    INFO();
+    int ret = 0;
+    char path_s[MAX_PATH_LEN];
+    get_path_s(path_s, pathname, MAX_PATH_LEN);
+    TRY(pread(fi->fh, buf, size, offset));
+    return ret;
 }
 
 int cloudfs_write(const char *pathname UNUSED, const char *buf UNUSED, size_t size UNUSED, off_t offset UNUSED,
@@ -471,6 +476,8 @@ int cloudfs_write(const char *pathname UNUSED, const char *buf UNUSED, size_t si
     get_path_s(path_s, pathname, MAX_PATH_LEN);
 
     TRY(pwrite(fi->fh, buf, size, offset));
+
+    PF("[%s]:\t pathname: %s\n", __func__, pathname);
     int loc = ON_SSD;
     RUN_M(get_loc(path_s, &loc));
     if (loc == ON_CLOUD) {
@@ -487,6 +494,31 @@ int cloudfs_write(const char *pathname UNUSED, const char *buf UNUSED, size_t si
 
 
 int cloudfs_release(const char *pathname UNUSED, struct fuse_file_info *fi UNUSED) {
+
+//    PF("[%s]: pathname: %s\n", __func__, pathname);
+//    INFO();
+//
+//    char path_s[MAX_PATH_LEN];
+//    char path_c[MAX_PATH_LEN];
+//    get_path_s(path_s, pathname, MAX_PATH_LEN);
+//    get_path_c(path_c, path_s);
+//    size_t size_f = 0;
+//
+//    struct stat statbuf;
+//    RUN_M(lstat(path_s, &statbuf));
+//    size_f = statbuf.st_size;
+//    if (size_f > fstate->threshold) {
+//        PF("[%s]: placing %s into cloud at %s\n", __func__, pathname, path_c);
+//
+//    }
+//    RUN_M(close(fi->fh));
+
+    int ret = 0;
+    ret = close(fi->fh);
+    return ret;
+}
+
+int cloudfs_release2(const char *pathname UNUSED, struct fuse_file_info *fi UNUSED) {
 
     PF("[%s]:\t pathname: %s\n", __func__, pathname);
     INFO();
@@ -639,7 +671,30 @@ int cloudfs_rmdir(const char *pathname UNUSED) {
     get_path_s(path_s, pathname, MAX_PATH_LEN);
     PF("[utimens] path_s is %s\n", path_s);
 
-    TRY(cloudfs_rmdir(path_s));
+    ret = rmdir(path_s);
+    if (ret == -1){
+        return -errno;
+
+    }
+
+//    ret = utimensat(0, path_s, tv, AT_SYMLINK_NOFOLLOW);
+//    if (ret < 0) {
+//        return cloudfs_error("utimens failed");
+//    }
+
+    return 0;
+}
+
+int cloudfs_unlink(const char *pathname UNUSED) {
+    PF("[%s]:\t pathname: %s\n", __func__, pathname);
+    INFOF();
+    int ret = 0;
+
+    char path_s[MAX_PATH_LEN];
+    get_path_s(path_s, pathname, MAX_PATH_LEN);
+    PF("[utimens] path_s is %s\n", path_s);
+
+    TRY(unlink(path_s));
 
 //    ret = utimensat(0, path_s, tv, AT_SYMLINK_NOFOLLOW);
 //    if (ret < 0) {
@@ -647,10 +702,6 @@ int cloudfs_rmdir(const char *pathname UNUSED) {
 //    }
 
     return ret;
-}
-
-int cloudfs_unlink(const char *path UNUSED) {
-    NOI();
 }
 
 int cloudfs_truncate(const char *path UNUSED, off_t newsize UNUSED) {
