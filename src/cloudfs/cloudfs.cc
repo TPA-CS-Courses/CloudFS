@@ -154,9 +154,9 @@ void cloudfs_destroy(void *data UNUSED) {
 
 void get_path_s(char *full_path, const char *pathname, int bufsize) {
     INFOF();
-    if(pathname[0] == '/'){
+    if (pathname[0] == '/') {
         snprintf(full_path, bufsize, "%s%s", fstate->ssd_path, pathname + 1);
-    }else{
+    } else {
         snprintf(full_path, bufsize, "%s%s", fstate->ssd_path, pathname);
     }
 
@@ -351,7 +351,8 @@ int cloudfs_readdir(const char *pathname UNUSED, void *buf UNUSED, fuse_fill_dir
     char lost_found[MAX_PATH_LEN];
     get_path_s(lost_found, "/lost+found", MAX_PATH_LEN);
 
-    dp = (DIR *) (uintptr_t) fi->fh;
+    dp = (DIR * )(uintptr_t)
+    fi->fh;
     de = readdir(dp);
     if (de == 0) {
         cloudfs_error(__func__);
@@ -447,7 +448,7 @@ int cloudfs_mknod(const char *pathname UNUSED, mode_t mode UNUSED, dev_t dev UNU
     //set as not dirty and on ssd
     RUN_M(set_loc(path_s, ON_SSD));
     RUN_M(set_dirty(path_s, N_DIRTY));
-//    int set_l_ret = set_location(path_s, ON_SSD);
+//    int set_l_ret = set_loc(path_s, ON_SSD);
 //    if(set_l_ret < 0){
 //        return -errno;
 //    }
@@ -517,6 +518,7 @@ int cloudfs_release(const char *pathname UNUSED, struct fuse_file_info *fi UNUSE
     ret = close(fi->fh);
     return ret;
 }
+
 
 int cloudfs_release2(const char *pathname UNUSED, struct fuse_file_info *fi UNUSED) {
 
@@ -672,7 +674,7 @@ int cloudfs_rmdir(const char *pathname UNUSED) {
     PF("[utimens] path_s is %s\n", path_s);
 
     ret = rmdir(path_s);
-    if (ret == -1){
+    if (ret == -1) {
         return -errno;
 
     }
@@ -790,14 +792,13 @@ int cloudfs_start(struct cloudfs_state *state,
     time_t now;
     time(&now);
 
-    struct tm * timeinfo;
+    struct tm *timeinfo;
 
 
+    timeinfo = localtime(&now);
 
-    timeinfo = localtime (&now);
 
-
-    strftime (log_path,sizeof(log_path),"/tmp/cloudfs%Y-%m-%d-%H-%M-%S.log",timeinfo);
+    strftime(log_path, sizeof(log_path), "/tmp/cloudfs%Y-%m-%d-%H-%M-%S.log", timeinfo);
     logfile = fopen(log_path, "w");
     PF("Runtime is %s\n", ctime(&now));
 
