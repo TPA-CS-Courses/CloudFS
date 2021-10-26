@@ -301,8 +301,11 @@ int cloudfs_readdir(const char *pathname UNUSED, void *buf UNUSED, fuse_fill_dir
         memset(&st, 0, sizeof(st));
         st.st_ino = de->d_ino;
         st.st_mode = de->d_type << 12;
-        if (filler(buf, de->d_name, &st, 0))
+        if (filler(buf, de->d_name, &st, 0)){
             break;
+        }
+        PF("[%s]:\t buf: %s\n", __func__, buf);
+
     }
     closedir(d);
     return 0;
@@ -316,7 +319,7 @@ int cloudfs_getxattr(const char *pathname, const char *name, char *value,
     int ret = 0;
     char path_s[MAX_PATH_LEN];
     get_path_s(path_s, pathname, MAX_PATH_LEN);
-    PF("[getxattr] path_s is %s\n", path_s);
+    PF("[%s] path_s : %s\t name : %s \tsize : %zu\n", __func__, path_s, name, size);
 
 
     ret = lgetxattr(path_s, name, value, size);
