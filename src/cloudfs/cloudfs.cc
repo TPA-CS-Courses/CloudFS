@@ -862,14 +862,13 @@ int cloudfs_release(const char *pathname UNUSED, struct fuse_file_info *fi UNUSE
             // TODO
 
 
-            struct stat statbuf;
-            RUN_M(lstat(path_s, &statbuf));
+//            struct stat statbuf;
+//            RUN_M(lstat(path_s, &statbuf));
 
-            FILE *fd = fopen(path_s, "w");
+            FILE *fd = fopen(path_t, "w");
             fclose(fd);
             set_loc(path_s, ON_CLOUD);
             set_dirty(path_s, N_DIRTY);
-            RUN_M(clone_2_proxy(path_s, &statbuf));
         }
     } else {
         return cloudfs_error("release failed");
@@ -947,7 +946,13 @@ int cloudfs_unlink(const char *pathname UNUSED) {
     char path_s[MAX_PATH_LEN];
     get_path_s(path_s, pathname, MAX_PATH_LEN);
     PF("[utimens] path_s is %s\n", path_s);
+    if(is_on_cloud(path_s)){
 
+        char path_c[MAX_PATH_LEN];
+        get_path_c(path_c, path_s);
+        cloud_delete_object(BUCKET, path_c);
+        cloud_print_error();
+    }
     TRY(unlink(path_s));
 
 //    ret = utimensat(0, path_s, tv, AT_SYMLINK_NOFOLLOW);
@@ -1017,7 +1022,6 @@ int cloudfs_start(struct cloudfs_state *state,
     cloudfs_operations.write = cloudfs_write;
     cloudfs_operations.release = cloudfs_release;
     cloudfs_operations.init = cloudfs_init;
-    cloudfs_operations.destroy = cloudfs_destroy;
     cloudfs_operations.access = cloudfs_access;
     cloudfs_operations.chmod = cloudfs_chmod;
     cloudfs_operations.link = cloudfs_link;
