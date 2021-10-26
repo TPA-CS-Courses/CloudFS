@@ -55,6 +55,7 @@
 #define DIRTY 1
 
 #define BUCKET ("test")
+#define TEMPDIR (".tempfiles")
 
 static struct cloudfs_state state_;
 static struct cloudfs_state *fstate;
@@ -139,7 +140,7 @@ static int cloudfs_error(const char *error_str) {
  */
 void *cloudfs_init(struct fuse_conn_info *conn UNUSED) {
 
-    char temp_dir[MAX_PATH_LEN] = ".tempfiles";
+    char temp_dir[MAX_PATH_LEN] = TEMPDIR;
 
     char temp_dir_ssd[MAX_PATH_LEN];
 
@@ -178,7 +179,7 @@ void get_path_t(char *path_t, const char *pathname, int bufsize) {
     INFOF();
     char path_s[MAX_PATH_LEN];
     char path_c[MAX_PATH_LEN];
-    char temp_dir[MAX_PATH_LEN] = ".tempfiles";
+    char temp_dir[MAX_PATH_LEN] = TEMPDIR;
     if (pathname[0] == '/') {
         snprintf(path_s, bufsize, "%s%s", fstate->ssd_path, pathname + 1);
     } else {
