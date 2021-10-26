@@ -53,7 +53,7 @@
 #define N_DIRTY 0
 #define DIRTY 1
 
-#define BUCK ("test")
+#define BUCKET ("test")
 
 static struct cloudfs_state state_;
 static struct cloudfs_state *fstate;
@@ -171,6 +171,16 @@ void get_path_c(char *path_c, const char *path_s) {
         if (path_c[i] == '/') {
             path_c[i] = '+';
         }
+    }
+}
+bool is_on_cloud(char *pathname){
+    int loc = ON_SSD;
+    RUN_M(get_loc(path_s, &loc));
+    if (loc == ON_CLOUD) {
+        return true;
+    }
+    else{
+        return false;
     }
 }
 
@@ -494,7 +504,7 @@ int cloudfs_write(const char *pathname UNUSED, const char *buf UNUSED, size_t si
 }
 
 
-int cloudfs_release(const char *pathname UNUSED, struct fuse_file_info *fi UNUSED) {
+int cloudfs_release2(const char *pathname UNUSED, struct fuse_file_info *fi UNUSED) {
 
 //    PF("[%s]: pathname: %s\n", __func__, pathname);
 //    INFO();
@@ -520,7 +530,70 @@ int cloudfs_release(const char *pathname UNUSED, struct fuse_file_info *fi UNUSE
 }
 
 
-int cloudfs_release2(const char *pathname UNUSED, struct fuse_file_info *fi UNUSED) {
+void cloud_put(char *path_s, char *path_c, struct stat statbuf) {
+
+    infile = fopen(path_s, "rb");
+    cloud_put_object(BUCKET, path_c, statbuf.st_size, put_buffer);
+    cloud_print_error();
+
+    PF("[%s]:\t put %s on cloud with key: %s\n", __func__, path_s, path_c);
+    fclose(infile);
+}
+
+
+int clone_2_proxy(char *path_s, struct stat statbuf) {
+    int ret = 0;
+//    struct stat {
+//        dev_t     st_dev;         /* ID of device containing file */
+//        ino_t     st_ino;         /* Inode number */
+//        mode_t    st_mode;        /* File type and mode */
+//        nlink_t   st_nlink;       /* Number of hard links */
+//        uid_t     st_uid;         /* User ID of owner */
+//        gid_t     st_gid;         /* Group ID of owner */
+//        dev_t     st_rdev;        /* Device ID (if special file) */
+//        off_t     st_size;        /* Total size, in bytes */
+//        blksize_t st_blksize;     /* Block size for filesystem I/O */
+//        blkcnt_t  st_blocks;      /* Number of 512B blocks allocated */
+    TRY(lsetxattr(path_s, "user.st_dev", &sp->st_dev, sizeof(dev_t), 0);
+    TRY(lsetxattr(path_s, "user.st_ino", &sp->st_ino, sizeof(ino_t), 0);
+    TRY(lsetxattr(path_s, "user.st_mode", &sp->st_mode, sizeof(mode_t), 0);
+    TRY(lsetxattr(path_s, "user.st_nlink", &sp->st_nlink, sizeof(nlink_t), 0);
+    TRY(lsetxattr(path_s, "user.st_uid", &sp->st_uid, sizeof(uid_t), 0);
+    TRY(lsetxattr(path_s, "user.st_gid", &sp->st_gid, sizeof(gid_t), 0);
+    TRY(lsetxattr(path_s, "user.st_rdev", &sp->st_rdev, sizeof(dev_t), 0);
+    TRY(lsetxattr(path_s, "user.st_size", &sp->st_size, sizeof(off_t), 0);
+    TRY(lsetxattr(path_s, "user.st_blksize", &sp->st_blksize, sizeof(blksize_t), 0);
+    TRY(lsetxattr(path_s, "user.st_blocks", &sp->st_blocks, sizeof(blkcnt_t), 0);
+    retrun ret;
+}
+
+int get_from_proxy(char *path_s, struct stat statbuf) {
+    int ret = 0;
+//    struct stat {
+//        dev_t     st_dev;         /* ID of device containing file */
+//        ino_t     st_ino;         /* Inode number */
+//        mode_t    st_mode;        /* File type and mode */
+//        nlink_t   st_nlink;       /* Number of hard links */
+//        uid_t     st_uid;         /* User ID of owner */
+//        gid_t     st_gid;         /* Group ID of owner */
+//        dev_t     st_rdev;        /* Device ID (if special file) */
+//        off_t     st_size;        /* Total size, in bytes */
+//        blksize_t st_blksize;     /* Block size for filesystem I/O */
+//        blkcnt_t  st_blocks;      /* Number of 512B blocks allocated */
+    TRY(lgetxattr(path_s, "user.st_dev", &sp->st_dev, sizeof(dev_t));
+    TRY(lgetxattr(path_s, "user.st_ino", &sp->st_ino, sizeof(ino_t));
+    TRY(lgetxattr(path_s, "user.st_mode", &sp->st_mode, sizeof(mode_t));
+    TRY(lgetxattr(path_s, "user.st_nlink", &sp->st_nlink, sizeof(nlink_t));
+    TRY(lgetxattr(path_s, "user.st_uid", &sp->st_uid, sizeof(uid_t));
+    TRY(lgetxattr(path_s, "user.st_gid", &sp->st_gid, sizeof(gid_t));
+    TRY(lgetxattr(path_s, "user.st_rdev", &sp->st_rdev, sizeof(dev_t));
+    TRY(lgetxattr(path_s, "user.st_size", &sp->st_size, sizeof(off_t));
+    TRY(lgetxattr(path_s, "user.st_blksize", &sp->st_blksize, sizeof(blksize_t));
+    TRY(lgetxattr(path_s, "user.st_blocks", &sp->st_blocks, sizeof(blkcnt_t));
+    retrun ret;
+}
+
+int cloudfs_release(const char *pathname UNUSED, struct fuse_file_info *fi UNUSED) {
 
     PF("[%s]:\t pathname: %s\n", __func__, pathname);
     INFO();
@@ -534,10 +607,7 @@ int cloudfs_release2(const char *pathname UNUSED, struct fuse_file_info *fi UNUS
 //    size_t size_f = 0;
 
 
-    //close temp file
     if (close(fi->fh) < 0) {
-
-        PF("[%s]:\t cloudfs_error(\"release failed\")\n", __func__);
         return cloudfs_error("release failed");
     }
 
@@ -559,14 +629,16 @@ int cloudfs_release2(const char *pathname UNUSED, struct fuse_file_info *fi UNUS
             PF("[%s]:\t file %s size: %zu\n", __func__, pathname, size_f);
 
             if (size_f > fstate->threshold) {//larger than threshold, need to move to cloud
-                PF("[%s]:\t file %s need to be moved to cloud\n", __func__, pathname);
+                PF("[%s]:\t dirty file %s need to be moved to cloud\n", __func__, pathname);
+                NOI();
                 // TODO
                 // TODO
                 // TODO
                 // TODO
                 // TODO
             } else {//remain on ssd
-                PF("[%s]:\t file %s remain on ssd\n", __func__, pathname);
+                PF("[%s]:\t dirty file %s remain on ssd\n", __func__, pathname);
+                NOI();
                 // TODO
                 // TODO
                 // TODO
@@ -580,6 +652,31 @@ int cloudfs_release2(const char *pathname UNUSED, struct fuse_file_info *fi UNUS
 
             size_t size_f = statbuf.st_size;
             PF("[%s]:\t file %s size: %zu\n", __func__, pathname, size_f);
+            if (size_f > fstate->threshold) {//larger than threshold, need to move to cloud
+                PF("[%s]:\t clean file %s need to be put on cloud, cloud path is %s\n", __func__, pathname, path_c);
+//                NOI();
+//                infile = fopen(path_s, "rb");
+//                cloud_put_object(BUCKET, path_c, statbuf.st_size, put_buffer);
+//                cloud_print_error();
+//                fclose(infile);
+
+                PF("[line: %d]:\t", __LINE__);
+
+                cloud_put(path_s, path_c, statbuf);
+                PF("[line: %d]:\t", __LINE__);
+                FILE *fd = fopen(path_s, "w");
+                fclose(fd);
+                //clear all content;
+                set_loc(path_s, ON_CLOUD);
+                set_dirty(path_s, N_DIRTY);
+                RUN_M(clone_2_proxy(path_s, statbuf));
+
+            } else {//remain on ssd
+                PF("[%s]:\t clean file %s put on ssd\n", __func__, pathname);
+                PF("[line: %d]:\t", __LINE__);
+                set_loc(path_s, ON_SSD);
+                set_dirty(path_s, N_DIRTY);
+            }
 
         }
 
@@ -597,6 +694,7 @@ int cloudfs_release2(const char *pathname UNUSED, struct fuse_file_info *fi UNUS
             size_t size_f = statbuf.st_size;
 
             if (size_f <= fstate->threshold) {//smaller than threshold, need to move back to ssd
+                NOI();
                 // TODO
                 // TODO
                 // TODO
@@ -604,6 +702,7 @@ int cloudfs_release2(const char *pathname UNUSED, struct fuse_file_info *fi UNUS
                 // TODO
 
             } else {//remain on cloud
+                NOI();
                 // TODO
                 // TODO
                 // TODO
@@ -612,6 +711,7 @@ int cloudfs_release2(const char *pathname UNUSED, struct fuse_file_info *fi UNUS
 
             }
         } else {//not dirty
+            NOI();
             // TODO
             // TODO
             // TODO
