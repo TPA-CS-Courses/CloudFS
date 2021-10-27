@@ -21,11 +21,14 @@
 #include "dedup.h"
 #include "cloudfs.h"
 
-#define SHOWINFO
 
 #define UNUSED __attribute__((unused))
-#define PF(...) fprintf(logfile,__VA_ARGS__)
 
+#ifdef SHOWPF
+#define PF(...) fprintf(logfile,__VA_ARGS__)
+#else
+#define PF(...) sizeof(__VA_ARGS__)
+#endif
 
 #define NOI() fprintf(logfile,"INFO: NOT IMPLEMENTED [%s]\t Line:%d \n\n", __func__, __LINE__)
 
@@ -66,14 +69,14 @@ static FILE *outfile;
 
 int get_buffer(const char *buffer, int bufferLength) {
 
-    PF("[%s]get buffer %d\n",__func__, bufferLength);
+//    PF("[%s]get buffer %d\n",__func__, bufferLength);
     return fwrite(buffer, 1, bufferLength, outfile);
 }
 
 static FILE *infile;
 
 int put_buffer(char *buffer, int bufferLength) {
-    PF("[%s]put buffer %d\n",__func__, bufferLength);
+//    PF("[%s]put buffer %d\n",__func__, bufferLength);
     return fread(buffer, 1, bufferLength, infile);
 }
 
@@ -187,19 +190,17 @@ void get_path_t(char *path_t, const char *pathname, int bufsize) {
     }
 
     strcpy(path_c, path_s);
-    for (int i = 0; path_c[i] != '\0' ; i++) {
+    for (int i = 0; path_c[i] != '\0'; i++) {
         if (path_c[i] == '/') {
             path_c[i] = '+';
         }
     }
 
 
-
     snprintf(path_t, bufsize, "%s%s/%s", fstate->ssd_path, temp_dir, path_c + 1);
 
 
     PF("[%s]\t path_t is %s\n", __func__, path_t);
-
 
 
     PF("[%s]\t pathname is %s\n", __func__, pathname);
@@ -261,7 +262,7 @@ int cloudfs_getattr(const char *pathname, struct stat *statbuf) {
 int cloudfs_open(const char *pathname, struct fuse_file_info *fi) {
 
     PF("[%s]:\t pathname: %s\n", __func__, pathname);
-    INFO();
+    INFOF();
 //    int ret = 0;
     int fd;
 
@@ -290,7 +291,8 @@ int cloudfs_open(const char *pathname, struct fuse_file_info *fi) {
 
         fi->fh = fd;
 
-        PF("[%s]:\t open returned %d\t file is %s \t size is %zu \t st_ino is %zu\n", __func__, fd, path_t, size_f, ino_f);
+        PF("[%s]:\t open returned %d\t file is %s \t size is %zu \t st_ino is %zu\n", __func__, fd, path_t, size_f,
+           ino_f);
         if (fd < 0) {
             return cloudfs_error(__func__);
         }
@@ -552,7 +554,7 @@ int cloudfs_read(const char *pathname UNUSED, char *buf UNUSED, size_t size UNUS
                  struct fuse_file_info *fi) {
 
     PF("[%s]:\t pathname: %s\n", __func__, pathname);
-    INFO();
+    INFOF();
     int ret = 0;
     char path_s[MAX_PATH_LEN];
     get_path_s(path_s, pathname, MAX_PATH_LEN);
@@ -668,12 +670,12 @@ void cloud_get(char *path_s, char *path_c) {
 
     FILE *fp;
     char ch;
-    fp=fopen(path_s,"r");
-    int i;
+    fp = fopen(path_s, "r");
+    int i = 0;
     PF("[%s]: showing file content %s: ", __func__, path_s);
-    while((ch=fgetc(fp))!=EOF && i < 25)
-    {
+    while ((ch = fgetc(fp)) != EOF && i < 25) {
         PF("%c", ch);
+        i++;
     }
 
     PF("\n");
@@ -745,7 +747,8 @@ int cloudfs_release(const char *pathname UNUSED, struct fuse_file_info *fi UNUSE
     get_path_c(path_c, path_s);
     get_path_t(path_t, pathname, MAX_PATH_LEN);
 
-    PF("[%s]:\t pathname = %s \t path_s = %s \t path_c = %s \t path_t = %s\n", __func__, pathname, path_s, path_c, path_t);
+    PF("[%s]:\t pathname = %s \t path_s = %s \t path_c = %s \t path_t = %s\n", __func__, pathname, path_s, path_c,
+       path_t);
 //    size_t size_f = 0;
 
 
@@ -761,33 +764,37 @@ int cloudfs_release(const char *pathname UNUSED, struct fuse_file_info *fi UNUSE
         int dirty = N_DIRTY;
         RUN_M(get_dirty(path_s, &dirty));
         if (dirty) {//file is dirty
+
+            PF("[%s]:\t loc on ssd and dirty??  This should never happen!!!!!!\n", __func__);
+
             PF("[%s]:\t file %s is dirty\n", __func__, pathname);
 
-            struct stat statbuf;
-            RUN_M(lstat(path_s, &statbuf));
-
-            size_t size_f = statbuf.st_size;
-
-            PF("[%s]:\t file %s size: %zu\n", __func__, pathname, size_f);
-
-            if (size_f > fstate->threshold) {//larger than threshold, need to move to cloud
-                PF("[%s]:\t dirty file %s need to be moved to cloud\n", __func__, pathname);
-                NOI();
-                // TODO
-                // TODO
-                // TODO
-                // TODO
-                // TODO
-            } else {//remain on ssd
-                PF("[%s]:\t dirty file %s remain on ssd\n", __func__, pathname);
-                NOI();
-                // TODO
-                // TODO
-                // TODO
-                // TODO
-                // TODO
-            }
+//            struct stat statbuf;
+//            RUN_M(lstat(path_s, &statbuf));
+//
+//            size_t size_f = statbuf.st_size;
+//
+//            PF("[%s]:\t file %s size: %zu\n", __func__, pathname, size_f);
+//
+//            if (size_f > fstate->threshold) {//larger than threshold, need to move to cloud
+//                PF("[%s]:\t dirty file %s need to be moved to cloud\n", __func__, pathname);
+//                NOI();
+//                // TODO
+//                // TODO
+//                // TODO
+//                // TODO
+//                // TODO
+//            } else {//remain on ssd
+//                PF("[%s]:\t dirty file %s remain on ssd\n", __func__, pathname);
+//                NOI();
+//                // TODO
+//                // TODO
+//                // TODO
+//                // TODO
+//                // TODO
+//            }
         } else {//not dirty
+
             PF("[%s]:\t file %s not dirty\n", __func__, pathname);
             struct stat statbuf;
             RUN_M(lstat(path_s, &statbuf));
@@ -795,6 +802,7 @@ int cloudfs_release(const char *pathname UNUSED, struct fuse_file_info *fi UNUSE
             size_t size_f = statbuf.st_size;
             PF("[%s]:\t file %s size: %zu\n", __func__, pathname, size_f);
             if (size_f > fstate->threshold) {//larger than threshold, need to move to cloud
+                //
                 PF("[%s]:\t clean file %s need to be put on cloud, cloud path is %s\n", __func__, pathname, path_c);
 //                NOI();
 //                infile = fopen(path_s, "rb");
@@ -826,48 +834,53 @@ int cloudfs_release(const char *pathname UNUSED, struct fuse_file_info *fi UNUSE
 
         PF("[%s]:\t file %s is ON_CLOUD\n", __func__, pathname);
         int dirty = N_DIRTY;
+
         RUN_M(get_dirty(path_s, &dirty));
         if (dirty) {//file is dirty
             PF("[%s]:\t file %s is dirty\n", __func__, pathname);
 
             struct stat statbuf;
-            RUN_M(lstat(path_s, &statbuf));
+            RUN_M(lstat(path_t, &statbuf));
 
             size_t size_f = statbuf.st_size;
-
+            PF("[%s]: temp file size is %zu\n", __func__, size_f);
             if (size_f <= fstate->threshold) {//smaller than threshold, need to move back to ssd
-                NOI();
-                // TODO
-                // TODO
-                // TODO
-                // TODO
-                // TODO
+//                NOI();
+                cloud_delete_object(BUCKET, path_c);
+
+                PF("[%s]: move file from cloud to ssd at %s. key:[%s]", __func__, path_s, path_c);
+                PF("[%s]: rename %s to %s. key:[%s]", __func__, path_t, path_s, path_c);
+
+                RUN_M(rename(path_t, path_s));
+                set_loc(path_s, ON_SSD);
+                set_dirty(path_s, N_DIRTY);
 
             } else {//remain on cloud
-                NOI();
-                // TODO
-                // TODO
-                // TODO
-                // TODO
-                // TODO
+//                NOI();
+                cloud_delete_object(BUCKET, path_c);
+                cloud_put(path_t, path_c, &statbuf);
 
+                PF("[%s]: uploading %s to cloud to replace old file. key:[%s]", __func__, path_t, path_c);
+
+                set_loc(path_s, ON_CLOUD);
+                set_dirty(path_s, N_DIRTY);
+                RUN_M(clone_2_proxy(path_s, &statbuf));
+                // TODO
+                // TODO
+                // TODO
+                // TODO
+                // TODO
             }
         } else {//not dirty
 
             PF("[%s]:\t clean file %s stay on cloud\n", __func__, pathname);
 //            NOI();
-            // TODO
-            // TODO
-            // TODO
-            // TODO
-            // TODO
 
 
 //            struct stat statbuf;
 //            RUN_M(lstat(path_s, &statbuf));
 
-            FILE *fd = fopen(path_t, "w");
-            fclose(fd);
+            RUN_M(remove(path_t));
             set_loc(path_s, ON_CLOUD);
             set_dirty(path_s, N_DIRTY);
         }
@@ -902,6 +915,9 @@ int cloudfs_chmod(const char *pathname UNUSED, mode_t mode UNUSED) {
 
     char path_s[MAX_PATH_LEN];
     get_path_s(path_s, pathname, MAX_PATH_LEN);
+    if(is_on_cloud(path_s)){
+
+    }
     PF("[utimens] path_s is %s\n", path_s);
 
     TRY(cloudfs_chmod(path_s, mode));
@@ -947,7 +963,7 @@ int cloudfs_unlink(const char *pathname UNUSED) {
     char path_s[MAX_PATH_LEN];
     get_path_s(path_s, pathname, MAX_PATH_LEN);
     PF("[utimens] path_s is %s\n", path_s);
-    if(is_on_cloud(path_s)){
+    if (is_on_cloud(path_s)) {
 
         char path_c[MAX_PATH_LEN];
         get_path_c(path_c, path_s);
@@ -964,20 +980,104 @@ int cloudfs_unlink(const char *pathname UNUSED) {
     return ret;
 }
 
-int cloudfs_truncate(const char *path UNUSED, off_t newsize UNUSED) {
-    NOI();
+int cloudfs_truncate(const char *pathname UNUSED, off_t newsize UNUSED) {
+
+    PF("[%s]:\t pathname: %s\n", __func__, pathname);
+    INFOF();
+    int ret = 0;
+
+    char path_s[MAX_PATH_LEN];
+    get_path_s(path_s, pathname, MAX_PATH_LEN);
+    if (is_on_cloud(path_s)) {
+        char path_t[MAX_PATH_LEN];
+        get_path_t(path_t, pathname, MAX_PATH_LEN);
+        PF("[utimens] path_s is on cloud, truncating %s\n", path_t);
+        RUN_M(set_dirty(path_s, DIRTY));//only when on cloud
+        TRY(truncate(path_t, newsize));
+    } else {
+
+        PF("[utimens] path_s is on ssd, truncating %s\n", path_s);
+        TRY(truncate(path_s, newsize));
+
+    }
+
+//    PF("[utimens] path_s is %s\n", path_s);
+//
+//    int loc = ON_SSD;
+//    RUN_M(get_loc(path_s, &loc));
+//    if (loc == ON_CLOUD) {
+//        RUN_M(set_dirty(path_s, DIRTY));
+//    }
+//
+//    TRY(truncate(path_s, newsize));
+
+//    ret = utimensat(0, path_s, tv, AT_SYMLINK_NOFOLLOW);
+//    if (ret < 0) {
+//        return cloudfs_error("utimens failed");
+//    }
+
+    return ret;
 }
 
-int cloudfs_link(const char *path UNUSED, const char *newpath UNUSED) {
+int cloudfs_link(const char *pathname UNUSED, const char *newpath UNUSED) {
+    PF("[%s]:\t pathname: %s\n", __func__, pathname);
     NOI();
+    int ret = 0;
+
+    char path_s[MAX_PATH_LEN];
+    char path_s_n[MAX_PATH_LEN];
+    get_path_s(path_s, pathname, MAX_PATH_LEN);
+    get_path_s(path_s_n, newpath, MAX_PATH_LEN);
+//    if (is_on_cloud(path_s)) {
+//        char path_t[MAX_PATH_LEN];
+//        get_path_t(path_t, pathname, MAX_PATH_LEN);
+//        PF("[utimens] path_s is on cloud, truncating %s\n", path_t);
+//        RUN_M(set_dirty(path_s, DIRTY));//only when on cloud
+//        TRY(truncate(path_t, newsize));
+//    }else{
+//
+//        PF("[utimens] path_s is on ssd, truncating %s\n", path_s);
+//        TRY(truncate(path_s, newsize));
+//
+//    }
+
+    TRY(link(pathname, newpath));
+    return ret;
+
+
 }
 
-int cloudfs_symlink(const char *dst UNUSED, const char *path UNUSED) {
+int cloudfs_symlink(const char *pathname UNUSED, const char *newpath UNUSED) {
     NOI();
+    PF("[%s]:\t pathname: %s\n", __func__, pathname);
+    INFOF();
+    int ret = 0;
+    char path_s[MAX_PATH_LEN];
+    char path_s_n[MAX_PATH_LEN];
+    get_path_s(path_s, pathname, MAX_PATH_LEN);
+    get_path_s(path_s_n, newpath, MAX_PATH_LEN);
+    if (access(pathname, F_OK) == -1){
+        return -errno;
+    }
+    TRY(symlink(pathname, newpath));
+    return ret;
 }
 
-int cloudfs_readlink(const char *path UNUSED, char *buf UNUSED, size_t bufsize UNUSED) {
+int cloudfs_readlink(const char *pathname UNUSED, char *buf UNUSED, size_t bufsize UNUSED) {
     NOI();
+
+    PF("[%s]:\t pathname: %s\n", __func__, pathname);
+    INFOF();
+    int ret = 0;
+
+    char path_s[MAX_PATH_LEN];
+    get_path_s(path_s, pathname, MAX_PATH_LEN);
+    PF("[utimens] path_s is %s\n", path_s);
+
+    TRY(readlink(path_s, buf, bufsize));
+
+    buf[ret] = '\0';
+    return ret;
 }
 
 void show_fuse_state() {
@@ -1056,7 +1156,7 @@ int cloudfs_start(struct cloudfs_state *state,
 
 
     strftime(log_path, sizeof(log_path), "/tmp/cloudfs%Y-%m-%d-%H-%M-%S.log", timeinfo);
-    logfile = fopen(log_path, "w");
+    logfile = fopen("/tmp/cloudfs.log", "w");
     PF("Runtime is %s\n", ctime(&now));
 
     setvbuf(logfile, NULL, _IOLBF, 0);
