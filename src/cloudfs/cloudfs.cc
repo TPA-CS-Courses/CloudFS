@@ -637,7 +637,7 @@ int cloudfs_write_de(const char *pathname UNUSED, const char *buf UNUSED, size_t
 
 
 int cloudfs_write(const char *pathname UNUSED, const char *buf UNUSED, size_t size UNUSED, off_t offset UNUSED,
-                 struct fuse_file_info *fi) {
+                  struct fuse_file_info *fi) {
     int ret = 0;
     if (fstate->no_dedup) {
         ret = cloudfs_write_node(pathname, buf, size, offset, fi);
