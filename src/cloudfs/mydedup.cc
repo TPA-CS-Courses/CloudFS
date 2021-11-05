@@ -99,6 +99,6 @@ int mydedup_segmentation(char *fpath, int *num_seg, FILE *logfile){
     MD5_Init(&ctx);
 
     while( (bytes = read(fd, buf, sizeof buf)) > 0 ) {
-        char *buftoread = (char *)&buf[0];
+        char *buftoread = (char *)&buf[0]; 
     }
 }
