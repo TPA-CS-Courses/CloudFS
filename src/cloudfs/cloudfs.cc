@@ -15,11 +15,16 @@
 #include <sys/stat.h>
 #include <sys/types.h>
 #include <sys/xattr.h>
+
+#include <openssl/md5.h>
 #include <time.h>
 #include <unistd.h>
 #include "cloudapi.h"
 #include "dedup.h"
 #include "cloudfs.h"
+#include "mydedup.h"
+
+#define SHOWPF
 
 
 #define UNUSED __attribute__((unused))
@@ -118,7 +123,7 @@ int put_buffer(char *buffer, int bufferLength) {
 //#define st_ctime st_ctim.tv_sec
 //};
 
-static int cloudfs_error(const char *error_str) {
+int cloudfs_error(const char *error_str) {
     int ret = -errno;
 
     // TODO:
@@ -173,6 +178,17 @@ void get_path_s(char *full_path, const char *pathname, int bufsize) {
         snprintf(full_path, bufsize, "%s%s", fstate->ssd_path, pathname + 1);
     } else {
         snprintf(full_path, bufsize, "%s%s", fstate->ssd_path, pathname);
+    }
+
+    PF("[%s]\t pathname is %s\n", __func__, pathname);
+}
+
+void get_path_f(char *full_path, const char *pathname, int bufsize) {
+    INFOF();
+    if (pathname[0] == '/') {
+        snprintf(full_path, bufsize, "%s%s", fstate->fuse_path, pathname + 1);
+    } else {
+        snprintf(full_path, bufsize, "%s%s", fstate->fuse_path, pathname);
     }
 
     PF("[%s]\t pathname is %s\n", __func__, pathname);
@@ -531,7 +547,7 @@ int get_dirty(const char *pathname, int *value) {
     return ret;
 }
 
-int cloudfs_mknod(const char *pathname UNUSED, mode_t mode UNUSED, dev_t dev UNUSED) {
+int cloudfs_mknod(const char *pathname, mode_t mode UNUSED, dev_t dev UNUSED) {
 
     PF("[%s]:\t pathname: %s\n", __func__, pathname);
 
@@ -550,8 +566,9 @@ int cloudfs_mknod(const char *pathname UNUSED, mode_t mode UNUSED, dev_t dev UNU
     return ret;
 }
 
-int cloudfs_read(const char *pathname UNUSED, char *buf UNUSED, size_t size UNUSED, off_t offset UNUSED,
-                 struct fuse_file_info *fi) {
+
+int cloudfs_read_node(const char *pathname, char *buf UNUSED, size_t size UNUSED, off_t offset UNUSED,
+                      struct fuse_file_info *fi) {
 
     PF("[%s]:\t pathname: %s\n", __func__, pathname);
     INFOF();
@@ -564,8 +581,31 @@ int cloudfs_read(const char *pathname UNUSED, char *buf UNUSED, size_t size UNUS
     return ret;
 }
 
-int cloudfs_write(const char *pathname UNUSED, const char *buf UNUSED, size_t size UNUSED, off_t offset UNUSED,
-                  struct fuse_file_info *fi) {
+int cloudfs_read_de(const char *pathname UNUSED, char *buf UNUSED, size_t size UNUSED, off_t offset UNUSED,
+                    struct fuse_file_info *fi) {
+
+    PF("[%s]:\t pathname: %s\n", __func__, pathname);
+
+    NOI();
+    int ret = 0;
+    return ret;
+}
+
+int cloudfs_read(const char *pathname UNUSED, char *buf UNUSED, size_t size UNUSED, off_t offset UNUSED,
+                 struct fuse_file_info *fi) {
+    int ret = 0;
+    if (fstate->no_dedup) {
+        ret = cloudfs_read_node(pathname, buf, size, offset, fi);
+    } else {
+        ret = cloudfs_read_de(pathname, buf, size, offset, fi);
+    }
+
+    return ret;
+}
+
+
+int cloudfs_write_node(const char *pathname UNUSED, const char *buf UNUSED, size_t size UNUSED, off_t offset UNUSED,
+                       struct fuse_file_info *fi) {
     PF("[%s]:\t pathname: %s\n", __func__, pathname);
 
     INFOF();
@@ -582,11 +622,29 @@ int cloudfs_write(const char *pathname UNUSED, const char *buf UNUSED, size_t si
         RUN_M(set_dirty(path_s, DIRTY));
     }
 
-//    ret = pwrite(fi->fh, buf, size, offset);
-//    if (ret < 0) {
-//        ret = cloudfs_error("write failed");
-//
-//    }
+    return ret;
+}
+
+
+int cloudfs_write_de(const char *pathname UNUSED, const char *buf UNUSED, size_t size UNUSED, off_t offset UNUSED,
+                     struct fuse_file_info *fi) {
+    PF("[%s]:\t pathname: %s\n", __func__, pathname);
+
+    NOI();
+    int ret = 0;
+    return ret;
+}
+
+
+int cloudfs_write(const char *pathname UNUSED, const char *buf UNUSED, size_t size UNUSED, off_t offset UNUSED,
+                 struct fuse_file_info *fi) {
+    int ret = 0;
+    if (fstate->no_dedup) {
+        ret = cloudfs_write_node(pathname, buf, size, offset, fi);
+    } else {
+        ret = cloudfs_write_de(pathname, buf, size, offset, fi);
+    }
+
     return ret;
 }
 
@@ -735,7 +793,7 @@ int get_from_proxy(char *path_s, struct stat *statbuf_p) {
     return ret;
 }
 
-int cloudfs_release(const char *pathname UNUSED, struct fuse_file_info *fi UNUSED) {
+int cloudfs_release_node(const char *pathname UNUSED, struct fuse_file_info *fi UNUSED) {
 
     PF("[%s]:\t pathname: %s\n", __func__, pathname);
     INFOF();
@@ -891,6 +949,26 @@ int cloudfs_release(const char *pathname UNUSED, struct fuse_file_info *fi UNUSE
 }
 
 
+int cloudfs_release_de(const char *pathname UNUSED, struct fuse_file_info *fi UNUSED) {
+    PF("[%s]:\t pathname: %s\n", __func__, pathname);
+
+    NOI();
+    int ret = 0;
+    return ret;
+}
+
+int cloudfs_release(const char *pathname UNUSED, struct fuse_file_info *fi UNUSED) {
+    int ret = 0;
+    if (fstate->no_dedup) {
+        ret = cloudfs_release_node(pathname, fi);
+    } else {
+        ret = cloudfs_release_de(pathname, fi);
+    }
+
+    return ret;
+}
+
+
 int cloudfs_access(const char *pathname UNUSED, int mask UNUSED) {
 
     PF("[%s]:\t pathname: %s\n", __func__, pathname);
@@ -909,20 +987,41 @@ int cloudfs_access(const char *pathname UNUSED, int mask UNUSED) {
 int cloudfs_chmod(const char *pathname UNUSED, mode_t mode UNUSED) {
 //    NOI();
 
+//    PF("[%s]:\t pathname: %s\n", __func__, pathname);
+//    fprintf(logfile,"[%s]: pathname: %s\n", __func__, pathname);
+//    INFOF();
+//    int ret = 0;
+//
+//    char path_s[MAX_PATH_LEN];
+//    get_path_s(path_s, pathname, MAX_PATH_LEN);
+//    if(is_on_cloud(path_s)){
+//        fprintf(logfile,"[%s]: path_s: %s is on cloud\n", __func__, path_s);
+//    }
+//    fprintf(logfile,"[%s]: path_s: %s is not on cloud\n", __func__, path_s);
+//    PF("[utimens] path_s is %s\n", path_s);
+//
+//    TRY(chmod(path_s, mode));
+
+
+
+
     PF("[%s]:\t pathname: %s\n", __func__, pathname);
-    fprintf(logfile,"[%s]: pathname: %s\n", __func__, pathname);
+
+    fprintf(logfile, "[%s]: pathname: %s\n", __func__, pathname);
     INFOF();
     int ret = 0;
 
     char path_s[MAX_PATH_LEN];
     get_path_s(path_s, pathname, MAX_PATH_LEN);
-    if(is_on_cloud(path_s)){
-        fprintf(logfile,"[%s]: path_s: %s is on cloud\n", __func__, path_s);
+
+    if (is_on_cloud(path_s)) {
+        fprintf(logfile, "[%s]: path_s: %s is on cloud\n", __func__, path_s);
     }
-    fprintf(logfile,"[%s]: path_s: %s is not on cloud\n", __func__, path_s);
+    fprintf(logfile, "[%s]: path_s: %s is not on cloud\n", __func__, path_s);
     PF("[utimens] path_s is %s\n", path_s);
 
-    TRY(cloudfs_chmod(path_s, mode));
+    TRY(chmod(path_s, mode));
+
 
 //    ret = utimensat(0, path_s, tv, AT_SYMLINK_NOFOLLOW);
 //    if (ret < 0) {
@@ -1024,29 +1123,32 @@ int cloudfs_truncate(const char *pathname UNUSED, off_t newsize UNUSED) {
 int cloudfs_link(const char *pathname UNUSED, const char *newpath UNUSED) {
     PF("[%s]:\t pathname: %s\n", __func__, pathname);
     NOI();
+    int ret = 0;
 
-    fprintf(logfile,"[%s]:\tpathname:%s\tnewpath:%s\n", __func__, pathname, newpath);
+    fprintf(logfile, "[%s]:\tpathname:%s\tnewpath:%s\n", __func__, pathname, newpath);
 
     char path_s[MAX_PATH_LEN];
     char path_s_n[MAX_PATH_LEN];
     get_path_s(path_s, pathname, MAX_PATH_LEN);
     get_path_s(path_s_n, newpath, MAX_PATH_LEN);
     if (is_on_cloud(path_s)) {
-        fprintf(logfile,"[%s]:\tpath_s:%s is on cloud\n", __func__, path_s, newpath);
-    }else{
-        fprintf(logfile,"[%s]:\tpath_s:%s is not on cloud\n", __func__, path_s, newpath);
+        fprintf(logfile, "[%s]:\tpath_s:%s is on cloud\n", __func__, path_s);
+    } else {
+        fprintf(logfile, "[%s]:\tpath_s:%s is not on cloud\n", __func__, path_s);
 
     }
     if (is_on_cloud(path_s_n)) {
-        fprintf(logfile,"[%s]:\tpath_s_n:%s is on cloud\n", __func__, path_s_n, newpath);
-    }else{
-        fprintf(logfile,"[%s]:\tpath_s_n:%s is not on cloud\n", __func__, path_s_n, newpath);
+        fprintf(logfile, "[%s]:\tpath_s_n:%s is on cloud\n", __func__, path_s_n);
+    } else {
+        fprintf(logfile, "[%s]:\tpath_s_n:%s is not on cloud\n", __func__, path_s_n);
 
     }
+    TRY(link(path_s, path_s_n));
+    return ret;
 
 
 
-    return 0;
+//    return 0;
 
 //    int ret = 0;
 //
@@ -1075,27 +1177,27 @@ int cloudfs_link(const char *pathname UNUSED, const char *newpath UNUSED) {
 
 int cloudfs_symlink(const char *pathname UNUSED, const char *newpath UNUSED) {
     NOI();
+    int ret = 0;
 
-    fprintf(logfile,"[%s]:\tpathname:%s\tnewpath:%s\n", __func__, pathname, newpath);
+    fprintf(logfile, "[%s]:\tpathname:%s\tnewpath:%s\n", __func__, pathname, newpath);
 
-    char path_s[MAX_PATH_LEN];
     char path_s_n[MAX_PATH_LEN];
-    get_path_s(path_s, pathname, MAX_PATH_LEN);
     get_path_s(path_s_n, newpath, MAX_PATH_LEN);
-    if (is_on_cloud(path_s)) {
-        fprintf(logfile,"[%s]:\tpath_s:%s is on cloud\n", __func__, path_s, newpath);
-    }else{
-        fprintf(logfile,"[%s]:\tpath_s:%s is not on cloud\n", __func__, path_s, newpath);
+    if (is_on_cloud(path_s_n)) {
+        fprintf(logfile, "[%s]:\tpath_s_n:%s is on cloud\n", __func__, path_s_n);
+    } else {
+        fprintf(logfile, "[%s]:\tpath_s_n:%s is not on cloud\n", __func__, path_s_n);
 
     }
-    if (is_on_cloud(path_s_n)) {
-        fprintf(logfile,"[%s]:\tpath_s_n:%s is on cloud\n", __func__, path_s_n, newpath);
-    }else{
-        fprintf(logfile,"[%s]:\tpath_s_n:%s is not on cloud\n", __func__, path_s_n, newpath);
-
+    fprintf(logfile, "[%s]:\tsymlink(pathname:%s,\tpath_s_n:%s)\n", __func__, pathname, path_s_n);
+    ret = symlink(pathname, path_s_n);
+    if (ret == -1) {
+        return -errno;
     }
 
     return 0;
+
+//    return 0;
 
 //    PF("[%s]:\t pathname: %s\n", __func__, pathname);
 //    INFOF();
@@ -1112,31 +1214,34 @@ int cloudfs_symlink(const char *pathname UNUSED, const char *newpath UNUSED) {
 }
 
 int cloudfs_readlink(const char *pathname UNUSED, char *buf UNUSED, size_t bufsize UNUSED) {
-    NOI();
-
-    fprintf(logfile,"[%s]:\tpathname:%s\n", __func__, pathname);
-
-    char path_s[MAX_PATH_LEN];
-    get_path_s(path_s, pathname, MAX_PATH_LEN);
-    if (is_on_cloud(path_s)) {
-        fprintf(logfile,"[%s]:\tpath_s:%s is on cloud\n", __func__, path_s, newpath);
-    }else{
-        fprintf(logfile,"[%s]:\tpath_s:%s is not on cloud\n", __func__, path_s, newpath);
-    }
-    return 0;
-
-//    PF("[%s]:\t pathname: %s\n", __func__, pathname);
-//    INFOF();
-//    int ret = 0;
+//    NOI();
+//
+//    fprintf(logfile,"[%s]:\tpathname:%s\n", __func__, pathname);
 //
 //    char path_s[MAX_PATH_LEN];
 //    get_path_s(path_s, pathname, MAX_PATH_LEN);
-//    PF("[utimens] path_s is %s\n", path_s);
-//
-//    TRY(readlink(path_s, buf, bufsize));
-//
-//    buf[ret] = '\0';
-//    return ret;
+//    if (is_on_cloud(path_s)) {
+//        fprintf(logfile,"[%s]:\tpath_s:%s is on cloud\n", __func__, path_s);
+//    }else{
+//        fprintf(logfile,"[%s]:\tpath_s:%s is not on cloud\n", __func__, path_s);
+//    }
+//    return 0;
+
+    PF("[%s]:\t pathname: %s\n", __func__, pathname);
+    INFOF();
+    int ret = 0;
+
+    char path_s[MAX_PATH_LEN];
+    get_path_s(path_s, pathname, MAX_PATH_LEN);
+    PF("[utimens] path_s is %s\n", path_s);
+
+    ret = readlink(path_s, buf, bufsize);
+    if (ret == -1) {
+        return -errno;
+    }
+
+    buf[ret] = '\0';
+    return 0;
 }
 
 void show_fuse_state() {
@@ -1223,7 +1328,6 @@ int cloudfs_start(struct cloudfs_state *state,
 //    fprintf(logfile,"\n[%s\t]Line:\n", __func__, __LINE__)
 
     show_fuse_state();
-
 
     int fuse_stat = fuse_main(argc, argv, &cloudfs_operations, NULL);
 

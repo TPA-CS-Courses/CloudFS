@@ -74,8 +74,7 @@ int main(int argc, const char *argv[])
 	printf("Reading file %s\n", fname);	
 	*/
 	
-	rabinpoly_t *rp = rabin_init( window_size, avg_seg_size, 
-								  min_seg_size, max_seg_size);
+	rabinpoly_t *rp = rabin_init( window_size, avg_seg_size, min_seg_size, max_seg_size);
 
 	if (!rp) {
 		fprintf(stderr, "Failed to init rabinhash algorithm\n");

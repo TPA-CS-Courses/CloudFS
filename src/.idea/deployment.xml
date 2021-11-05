@@ -5,7 +5,7 @@
       <paths name="233">
         <serverdata>
           <mappings>
-            <mapping deploy="/home/student/CF" local="$PROJECT_DIR$" web="/" />
+            <mapping deploy="/home/student/chk2/src" local="$PROJECT_DIR$" web="/" />
           </mappings>
         </serverdata>
       </paths>

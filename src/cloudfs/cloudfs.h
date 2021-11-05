@@ -36,7 +36,9 @@ void cloud_get(char *path_s, char *path_c);
 bool is_on_cloud(char *pathname);
 int put_buffer(char *buffer, int bufferLength);
 int get_buffer(const char *buffer, int bufferLength);
-
+int cloudfs_read_de(const char *pathname, char *buf, size_t size, off_t offset, struct fuse_file_info *fi);
+int cloudfs_read_node(const char *pathname, char *buf, size_t size, off_t offset, struct fuse_file_info *fi);
+int cloudfs_error(const char *error_str);
 void cloudfs_get_fullpath(const char *path, char *fullpath);
 
 #endif
