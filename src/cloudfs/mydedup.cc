@@ -1,9 +1,7 @@
 //
-// Created by Wilson_Xu on 2021/11/4.
+// Created by Wilson_Xu on 2021/11/14.
 //
-// ref: https://github.com/libfuse/libfuse/blob/master/example/passthrough.c
-// ref: https://github.com/libfuse/libfuse/blob/master/example/passthrough.c
-// ref: https://github.com/libfuse/libfuse/blob/master/example/passthrough.c
+
 #include <ctype.h>
 #include <dirent.h>
 #include <errno.h>
@@ -23,7 +21,6 @@
 #include <unistd.h>
 
 
-
 #include <vector>
 #include <fstream>
 #include <string>
@@ -38,7 +35,6 @@
 
 
 #define SHOWPF
-
 
 #define UNUSED __attribute__((unused))
 
@@ -104,6 +100,19 @@ void mydedup_init(int window_size, int avg_seg_size, int min_seg_size, int max_s
     PF("[%s]:\n", __func__);
 }
 
+void get_tempfile_path_dedup(char *tempfile_path, char *path_s, int bufsize) {
+
+    PF("[%s]: %s\n", __func__, path_s);
+    char path_t[MAX_PATH_LEN];
+    strcpy(path_t, path_s);
+    for (int i = 0; path_t[i] != '\0'; i++) {
+        if (path_t[i] == '/') {
+            path_t[i] = '+';
+        }
+    }
+    snprintf(tempfile_path, bufsize, "%s%s/%s.tempfile", de_cfg->fstate->ssd_path, TEMPDIR, path_t + 1);
+    PF("[%s]\t fileproxy_path is %s\n", __func__, tempfile_path);
+}
 
 
 void get_fileproxy_path(char *fileproxy_path, char *path_s, int bufsize) {
@@ -122,30 +131,29 @@ void get_fileproxy_path(char *fileproxy_path, char *path_s, int bufsize) {
 
 void get_seg_proxy_path(char *seg_proxy_path, const char *md5, int bufsize) {
     snprintf(seg_proxy_path, bufsize, "%s%s/%s.segproxy", de_cfg->fstate->ssd_path, SEGPROXYDIR, md5);
-    PF("[%s]: md5: %s\t tempseg_path:%s\n", __func__, md5, seg_proxy_path);
+//    PF("[%s]: md5: %s\t tempseg_path:%s\n", __func__, md5, seg_proxy_path);
 }
 
 void get_tempseg_path(char *tempseg_path, const char *md5, int bufsize) {
 
     snprintf(tempseg_path, bufsize, "%s%s/%s.tempseg", de_cfg->fstate->ssd_path, TEMPSEGDIR, md5);
-    PF("[%s]: md5: %s\t tempseg_path:%s\n", __func__, md5, tempseg_path);
+//    PF("[%s]: md5: %s\t tempseg_path:%s\n", __func__, md5, tempseg_path);
 }
 
-
-void debug_showsegs(seg_info_p segs[], int seg_count) {
+void debug_showsegs(std::vector <seg_info_p> segs) {
     long seg_offset = 0;
-    for (int i = 0; i < seg_count; i++) {
-        PF("[%s]: seg[%d]: md5:%s, size:%ld, offset:%ld\n", __func__, i, segs[i]->md5, segs[i]->seg_size, seg_offset);
+    for (int i = 0; i < segs.size(); i++) {
+//        PF("[%s]: seg[%d]: md5:%s, size:%ld, offset:%ld\n", __func__, i, segs[i]->md5, segs[i]->seg_size, seg_offset);
         seg_offset += segs[i]->seg_size;
     }
 }
 
+bool file_exist(const char *path_s) {
+    return (access(path_s, 0) == 0);
+}
 
-int mydedup_segmentation(char *fpath, int &num_seg, seg_info_p segs[]) {
+int mydedup_segmentation(char *fpath, std::vector <seg_info_p> &segs) {
     PF("[%s]: %s\n", __func__, fpath);
-
-
-//    SEEFILE(fpath);
     int ret = 0;
     int fd;
     fd = open(fpath, O_RDONLY);
@@ -153,8 +161,6 @@ int mydedup_segmentation(char *fpath, int &num_seg, seg_info_p segs[]) {
         ret = cloudfs_error(__func__);
         return ret;
     }
-
-    int i = 0;
 
     rp = rabin_init(de_cfg->window_size, de_cfg->avg_seg_size, de_cfg->min_seg_size, de_cfg->max_seg_size);
 
@@ -171,10 +177,9 @@ int mydedup_segmentation(char *fpath, int &num_seg, seg_info_p segs[]) {
     int bytes;
 
     MD5_Init(&ctx);
-    PF("\n\n[%s]: _____________________________________\n", __func__);
+//    PF("\n\n[%s]: _____________________________________\n", __func__);
 
     while ((bytes = read(fd, buf, sizeof buf)) > 0) {
-//        PF("[%s]: bytes = %d, buf:[%s]\n", __func__, bytes, buf);
         char *buftoread = (char *) &buf[0];
         while ((len = rabin_segment_next(rp, buftoread, bytes,
                                          &new_segment)) > 0) {
@@ -185,28 +190,23 @@ int mydedup_segmentation(char *fpath, int &num_seg, seg_info_p segs[]) {
                 MD5_Final(md5, &ctx);
 
                 char md5string[2 * MD5_DIGEST_LENGTH + 1];
-                PF("[%s]: %u ", __func__, segment_len);
+//                PF("[%s]: %u ", __func__, segment_len);
                 for (b = 0; b < MD5_DIGEST_LENGTH; b++) {
-                    PF("%02x", md5[b]);
+//                    PF("%02x", md5[b]);
                     sprintf(md5string + b * 2, "%02x", md5[b]);
                 }
-                PF("\n[%s]: _____________________________________\n", __func__);
-
-                if (i > MAX_SEG_AMOUNT) {
-                    PF("[%s] ERROR i>MAX_SEG_AMOUNT", __func__);
-                }
+//                PF("\n[%s]: _____________________________________\n", __func__);
 
 
-                segs[i] = (seg_info_p) malloc(sizeof(seg_info_t));
+                seg_info_p new_seg;
+                new_seg = (seg_info_p) malloc(sizeof(seg_info_t));
 
-                segs[i]->seg_size = segment_len;
-                segs[i]->oncloud = true;
+                new_seg->seg_size = segment_len;
 
-                memset(segs[i]->md5, '\0', 2 * MD5_DIGEST_LENGTH + 1);
+                memset(new_seg->md5, '\0', 2 * MD5_DIGEST_LENGTH + 1);
+                memcpy(new_seg->md5, md5string, 2 * MD5_DIGEST_LENGTH);
 
-                memcpy(segs[i]->md5, md5string, 2 * MD5_DIGEST_LENGTH);
-
-                i++;
+                segs.push_back(new_seg);
 
                 MD5_Init(&ctx);
                 segment_len = 0;
@@ -220,162 +220,171 @@ int mydedup_segmentation(char *fpath, int &num_seg, seg_info_p segs[]) {
             }
         }
 
-
         if (len == -1) {
-//            fprintf(stderr, "Failed to process the segment\n");
             cloudfs_error(__func__);
             exit(2);
         }
     }
-    if (segment_len != 0) {
+    if (segment_len > 0) {
         MD5_Final(md5, &ctx);
         char md5string[2 * MD5_DIGEST_LENGTH + 1];
-        PF("%u ", segment_len);
+//        PF("%u", segment_len);
         for (b = 0; b < MD5_DIGEST_LENGTH; b++) {
-            PF("%02x", md5[b]);
+//            PF("%02x", md5[b]);
             sprintf(md5string + b * 2, "%02x", md5[b]);
         }
-        if (i > MAX_SEG_AMOUNT) {
-            PF("[%s] ERROR i>MAX_SEG_AMOUNT", __func__);
-        }
-        PF("\n");
 
-        if (i > MAX_SEG_AMOUNT) {
-            PF("[%s] ERROR i>MAX_SEG_AMOUNT", __func__);
-        }
-
-
-        segs[i] = (seg_info_p) malloc(sizeof(seg_info_t));
-
-        segs[i]->seg_size = segment_len;
-        segs[i]->oncloud = true;
-
-        memset(segs[i]->md5, '\0', 2 * MD5_DIGEST_LENGTH + 1);
-
-        memcpy(segs[i]->md5, md5string, 2 * MD5_DIGEST_LENGTH);
-
-        i++;
+        seg_info_p new_seg = (seg_info_p) malloc(sizeof(seg_info_t));
+        new_seg->seg_size = segment_len;
+        memset(new_seg->md5, '\0', 2 * MD5_DIGEST_LENGTH + 1);
+        memcpy(new_seg->md5, md5string, 2 * MD5_DIGEST_LENGTH);
+        segs.push_back(new_seg);
     }
-
-    num_seg = i;
-    PF("[%s] number of seg is %d\n", __func__, (*num_seg));
+    PF("[%s] number of seg is %zu\n", __func__, segs.size());
     close(fd);
 }
 
 
-//int write_FILEPROXY(char *proxy, int num_seg, seg_info_p segs[]) {
-//    int ret = 0;
-//    int i = 0;
-//    FILE *fp = FFOPEN__(proxy, "wb");
-//    if (fp == NULL) {
-//        ret = cloudfs_error(__func__);
-//        return ret;
-//    }
-//
-//    for (i = 0; i < num_seg; i++) {
-//        fprintf(fp, "%s,%ld\n", segs[i]->md5, segs[i]->seg_size);
-//    }
-//
-//}
-
-//read from SEGPROXY
-int ref_of_md5(char *md5) {
-    char seg_proxy_path[MAX_PATH_LEN];
-    get_seg_proxy_path(seg_proxy_path, md5, MAX_PATH_LEN);
-    int ref;
-    get_loc(seg_proxy_path, &ref);
-    return ref;
-}
-
-void debug_showfile(char *file, const char *functionname, int line) {
-    PF("[%s] is called by %s at line %d to show the content of %s\n", __func__, functionname, line, file);
-
-    FILE *f;
-    char c;
-    f = FFOPEN__(file, "rt");
-
-    while ((c = fgetc(f)) != EOF) {
-        PF("%c", c);
-    }
-
-    FFCLOSE__(f);
-
-    PF("\n[%s]: END OF %s\n\n\n", __func__, file);
-}
-
-long mydedup_determine_range(ret_range_p range, size_t size, off_t offset, seg_info_p segs[], int num_seg) {
-    PF("\n[%s]: find range for size: %zu, offset: %zu\n", __func__, size, offset);
+int mydedup_down_segs(char *path_s, std::vector <seg_info_p> &segs) {
+    PF("[%s]:path_s: %s\n", __func__, path_s);
     long ret = 0;
-    long upper_bound = 0;
-    long lower_bound = 0;
+    outfile = FFOPEN__(path_s, "wb");//closed
 
-    long total_size = 0;
-    int i;
 
-    for (i = 0; i < num_seg; i++) {
-        total_size += segs[i]->seg_size;
-        range->end = num_seg - 1;
-
-    }
-    if(offset >= total_size){
-        PF("\n[%s]: line %d ERROR??? offset >= total_size %ld\n", __func__, __LINE__, total_size);
-        range->start = num_seg - 1;
-        range->end = num_seg - 1;
-        return total_size - segs[num_seg - 1]->seg_size;
+    if (outfile == NULL) {
+        ret = cloudfs_error(__func__);
+        FFCLOSE__(outfile);
+        return ret;
     }
 
-
-    for (i = 0; i < num_seg; i++) {
-        lower_bound = upper_bound;
-        upper_bound += segs[i]->seg_size;
-        if (offset < upper_bound && offset >= lower_bound) {
-            range->start = i;
-            ret = lower_bound;
-            PF("\n[%s]: start is %d in [%ld-%ld]\n", __func__, i, lower_bound, upper_bound);
-            break;
-        }
+    for (int i = 0; i <= segs.size(); i++) {
+        PF("[%s]:cloud_get_object(BUCKET, %s, get_buffer);\n", __func__,segs[i]->md5);
+        cloud_get_object(BUCKET, segs[i]->md5, get_buffer);
+        cloud_print_error();
     }
 
+    FFCLOSE__(outfile);
 
-    upper_bound = 0;
-    lower_bound = 0;
-
-
-    if ((size + offset) > total_size) {
-        range->end = num_seg - 1;
-        PF("\n[%s]: end is %d \n", __func__, range->end);
-    } else {
-        for (i = 0; i < num_seg; i++) {
-            lower_bound = upper_bound;
-            upper_bound += segs[i]->seg_size;
-            if ((size + offset) <= upper_bound && (size + offset) > lower_bound) {
-                range->end = i;
-
-                PF("\n[%s]: end is %d in [%ld-%ld]\n", __func__, i, lower_bound, upper_bound);
-                break;
-            }
-        }
-    }
-    if(range->end > num_seg){
-        PF("\n[%s]: line %d ERROR!!!!! end too large\n", __func__, __LINE__);
-    }
-
-
-    if(range->start > num_seg){
-        PF("\n[%s]: line %d ERROR!!!!! start too large\n", __func__, __LINE__);
-    }
-
-    PF("\n[%s]: RET IS %ld\n", __func__, ret);
-    return ret;
+    return 0;
 }
 
-int mydedup_readsegs_from_proxy(char *file_proxy, seg_info_p segs[]) {
 
-//    SEEFILE(file_proxy);
+void mydedup_upload_segs(char *path_s, std::vector <seg_info_p> &segs) {
+    int ret = 0;
+    infile = fopen(path_s, "rb");
+
+    for (int i = 0; i < segs.size(); i++) {
+        char seg_proxy_path[MAX_PATH_LEN];
+        get_seg_proxy_path(seg_proxy_path, segs[i]->md5, MAX_PATH_LEN);
+        PF("[%s] seg[%d]->md5 = %s", __func__, i, segs[i]->md5);
+        if (!file_exist(seg_proxy_path)) {
+            FILE* fp = FFOPEN__(seg_proxy_path, "w");
+            FFCLOSE__(fp);
+            set_ref(seg_proxy_path, 1);//initial reference value
 
 
+            cloud_put_object(BUCKET, segs[i]->md5, segs[i]->seg_size, put_buffer);
+
+            PF("[%s] cloud_put_object with key %s\n", __func__, segs[i]->md5);
+        } else {
+            int refcnt = 0;
+            get_ref(seg_proxy_path, &refcnt);
+            set_ref(seg_proxy_path, refcnt + 1);//refcnt plus one
+            fseek(infile, segs[i]->seg_size, SEEK_CUR);
+        }
+
+    }
+    FFCLOSE__(infile);
+//
+//    char seg_proxy_path[MAX_PATH_LEN];
+//    get_seg_proxy_path(seg_proxy_path, seg->md5, MAX_PATH_LEN);
+//    FILE *fp;
+//    if (!file_exist(seg_proxy_path)) {// not in hash table
+//        //UPLOAD TO CLOUD
+//
+//        fp = FFOPEN__(seg_proxy_path, "w+");
+//        FFCLOSE__(fp);
+//
+//        set_ref(seg_proxy_path, 1);//initial reference value
+//
+//        seg->oncloud = true;
+//        char tempseg_path[MAX_PATH_LEN];
+//
+//        get_tempseg_path(tempseg_path, seg->md5, MAX_PATH_LEN);
+//        extract_seg(path_s, offset, seg->seg_size, tempseg_path);
+//        seg_upload(tempseg_path, seg->md5, seg->seg_size);
+//        remove(tempseg_path);
+//    } else {
+//        //already have same segment in cloud
+//        int refcnt = 0;
+//        get_ref(seg_proxy_path, &refcnt);
+//        if (refcnt == 0) {
+//            PF("[%s]:ERROR!! \tFile %s have 0 refcnt and is not deleted!!!\n", __func__, seg_proxy_path);
+//        }
+//        set_ref(seg_proxy_path, refcnt + 1);//refcnt plus one
+//    }
+}
+
+void mydedup_upload_file(char *path_s) {
+    std::vector <seg_info_p> segs;
+    mydedup_segmentation(path_s, segs);
+    mydedup_upload_segs(path_s, segs);
+    FILE *fp_fileproxy = FFOPEN__(path_s, "w");//closed
+
+
+    if (fp_fileproxy == NULL) {
+        PF("[%s]:open %s at line %d failed with reason [%s] ERROR\n", __func__, path_s, __LINE__, strerror(errno));
+        PF("[%s]:open %s %d ERROR\n", __func__, path_s, __LINE__);
+    }
+
+    for (int i = 0; i < segs.size(); i++) {
+        fprintf(fp_fileproxy, "%s %ld\n", segs[i]->md5, segs[i]->seg_size);
+    }
+
+    FFCLOSE__(fp_fileproxy);
+}
+
+int mydedup_getattr(const char *pathname, struct stat *statbuf) {
+    PF("[%s]:\t pathname: %s\n", __func__, pathname);
+    INFOF();
+    int ret = 0;
+
+    char path_s[MAX_PATH_LEN];
+    get_path_s(path_s, pathname, MAX_PATH_LEN);
+
+    ret = lstat(path_s, statbuf);
+
+    if (ret < 0) {
+        return -errno;
+    } else {
+        if (is_on_cloud(path_s)) {
+            std::ifstream proxy(path_s);
+            size_t total = 0;
+//            size_t segsize = 0;
+            get_from_proxy(path_s, statbuf);
+            std::vector <seg_info_p> segs;
+            mydedup_read_seginfo(path_s, segs);
+            for(int j = 0; j < segs.size(); j++){
+                total += segs[j]->seg_size;
+            }
+//            std::string md5;
+//            while (path_s >> md5 >> segsize) {
+//                total += segsize;
+//            }
+            proxy.close();
+            statbuf->st_size = total;
+            PF("[%s]:\tfile %s have size: %zu\n", __func__, pathname, statbuf->st_size);
+        }
+    }
+
+    size_t size_f = statbuf->st_size;
+
+    PF("[%s]:\tfile %s have size: %zu\n", __func__, pathname, size_f);
+}
+
+void mydedup_read_seginfo(const char *path_s, std::vector <seg_info_p> &segs) {
     PF("[%s]: reading seglist from file\n", __func__);
-    FILE *fp_fileproxy = FFOPEN__(file_proxy, "r");
+    FILE *fp_fileproxy = FFOPEN__(path_s, "r");
     int num_seg = -1;
     while (!feof(fp_fileproxy)) {
 
@@ -387,112 +396,258 @@ int mydedup_readsegs_from_proxy(char *file_proxy, seg_info_p segs[]) {
 
         num_seg += 1;
 //        PF("[%s]: [%s]\n", __func__, line);
-        segs[num_seg] = (seg_info_p) malloc(sizeof(seg_info_t));//freed
+        seg_info_p new_seg = (seg_info_p) malloc(sizeof(seg_info_t));//freed
 
-        memset(segs[num_seg]->md5, '\0', 2 * MD5_DIGEST_LENGTH + 1);
-        memcpy(segs[num_seg]->md5, line, 2 * MD5_DIGEST_LENGTH);
+        memset(new_seg->md5, '\0', 2 * MD5_DIGEST_LENGTH + 1);
+        memcpy(new_seg->md5, line, 2 * MD5_DIGEST_LENGTH);
         char *num_line = line + (2 * MD5_DIGEST_LENGTH + 1);
 
 
-        int i = sscanf(num_line, "%ldn", &segs[num_seg]->seg_size);
-//        PF("[%s]: ld from [%s] return %d\n", __func__, num_line, i);
+        sscanf(num_line, "%ldn", &(new_seg->seg_size));
 
-//        PF("[%s]: %d line is [%s], md5: %s, size: %ld\n", __func__, num_seg, line, segs[num_seg]->md5,
-//           segs[num_seg]->seg_size);
+        segs.push_back(new_seg);
+        PF("[%s]: md5: %s\t seg_size: %zu\n", __func__, new_seg->md5, new_seg->seg_size);
     }
     FFCLOSE__(fp_fileproxy);
     PF("[%s]: read %d segments from file\n", __func__, num_seg + 1);
-    return num_seg + 1;
 }
 
 
-int mydedup_uploadfile_append(char *temp_file_path, char *path_s, seg_info_p segs_old[], int num_seg_old) {
-
-    PF("[%s]: temp_file_path: %s, path_s:%s\n", __func__, temp_file_path, path_s);
+int mydedup_write(const char *pathname UNUSED, const char *buf UNUSED, size_t size UNUSED, off_t offset UNUSED,
+                  struct fuse_file_info *fi) {
+    PF("[%s]:\t pathname: %s\t offset: %zu\n", __func__, pathname, offset);
     int ret = 0;
-    PF("[%s]: Showing original segs\n", __func__);
-//    debug_showsegs(segs_old, num_seg_old);
+    char path_s[MAX_PATH_LEN];
+    get_path_s(path_s, pathname, MAX_PATH_LEN);
+    int loc = ON_SSD;
+    get_loc(path_s, &loc);
+
+    if (loc == ON_SSD) {
+        PF("[%s]:\t pathname: %s is local\n", __func__, path_s, offset);
+        ret = cloudfs_write_node(pathname, buf, size, offset, fi);
+
+        //read stat
+        struct stat statbuf;
+        lstat(path_s, &statbuf);
+        //upload and save stat to proxy
+        if (statbuf.st_size > de_cfg->fstate->threshold) {
+            PF("[%s] uploading %s",__func__, path_s);
+            mydedup_upload_file(path_s);
+            clone_2_proxy(path_s, &statbuf);
+            set_loc(path_s, ON_CLOUD);
+        }
+    } else {
+
+        std::vector <seg_info_p> segs;
+        mydedup_read_seginfo(path_s, segs);
+
+        PF("[%s]:\t pathname: %s is on cloud\n", __func__, path_s, offset);
+        size_t upperbound = 0;
+        size_t lowerbound = 0;
+        size_t offset_change = 0;
+        std::vector <seg_info_p> oldseg1, related_segs, oldseg2;
+        size_t seg_size;
+        std::ifstream proxy(path_s);
+        int after = 2;
+        int prev = 1;
+        std::string md5;
+
+        size_t segsize = 0;
+
+        for (int i = 0; i < segs.size(); i++) {
+            lowerbound = upperbound;
+            upperbound += segs[i]->seg_size;
+            if (upperbound < offset) {
+                oldseg1.push_back(segs[i]);
+                offset_change += upperbound;
+            } else if (lowerbound >= offset + size) {
+                if (after > 0) {//N+2 SCHEME
+                    oldseg2.push_back(segs[i]);
+                    after--;
+                } else {
+                    oldseg2.push_back(segs[i]);
+                }
+            } else {
+                if (prev > 0) {
+                    if (offset_change > 0) {
+                        related_segs.push_back(oldseg1[oldseg1.size() - 1]);
+                        offset_change -= oldseg1[oldseg1.size() - 1]->seg_size;
+                        oldseg1.pop_back();
+                    }
+                    prev--;
+                }
+                related_segs.push_back(segs[i]);
+            }
+        }
+
+//        while (proxy >> md5 >> seg_size) {
+//            lowerbound = upperbound;
+//            upperbound += seg_size;
+//            if (upperbound < offset) {
+//                seg_info_p new_seg = (seg_info_p) malloc(sizeof(seg_info_t));
+//                new_seg->seg_size = seg_size;
+//                memset(new_seg->md5, '\0', 2 * MD5_DIGEST_LENGTH + 1);
+//                memcpy(new_seg->md5, md5.c_str(), 2 * MD5_DIGEST_LENGTH);
+//                oldseg1.push_back(new_seg);
+//                offset_change += upperbound;
+//            } else if (lowerbound >= offset + size) {
+//                if (after > 0) {//N+2 SCHEME
+//                    seg_info_p new_seg = (seg_info_p) malloc(sizeof(seg_info_t));
+//                    new_seg->seg_size = seg_size;
+//                    memset(new_seg->md5, '\0', 2 * MD5_DIGEST_LENGTH + 1);
+//                    memcpy(new_seg->md5, md5.c_str(), 2 * MD5_DIGEST_LENGTH);
+//                    oldseg2.push_back(new_seg);
+//                    after--;
+//                }else{
+//                    seg_info_p new_seg = (seg_info_p) malloc(sizeof(seg_info_t));
+//                    new_seg->seg_size = seg_size;
+//                    memset(new_seg->md5, '\0', 2 * MD5_DIGEST_LENGTH + 1);
+//                    memcpy(new_seg->md5, md5.c_str(), 2 * MD5_DIGEST_LENGTH);
+//                    oldseg2.push_back(new_seg);
+//                }
+//
+//            } else {
+//                if (prev > 0) {
+//                    if (offset_change > 0) {
+//                        related_segs.push_back(oldseg1[oldseg1.size() - 1]);
+//                        offset_change -= oldseg1[oldseg1.size() - 1]->seg_size;
+//                        oldseg1.pop_back();
+//                    }
+//                    prev--;
+//                }
+//                seg_info_p new_seg = (seg_info_p) malloc(sizeof(seg_info_t));
+//                new_seg->seg_size = seg_size;
+//                memset(new_seg->md5, '\0', 2 * MD5_DIGEST_LENGTH + 1);
+//                memcpy(new_seg->md5, md5.c_str(), 2 * MD5_DIGEST_LENGTH);
+//                related_segs.push_back(new_seg);
+//            }
+//        }
+        proxy.close();
+
+        char temp_file_path[MAX_PATH_LEN];
+        get_tempfile_path_dedup(temp_file_path, path_s, MAX_PATH_LEN);
+
+        mydedup_down_segs(temp_file_path, related_segs);
+
+        int fd = open(temp_file_path, O_WRONLY);
+
+        ret = pwrite(fd, buf, size, offset - offset_change);
+
+        close(fd);
+
+        std::vector <seg_info_p> updated_segs;
+
+        mydedup_segmentation(temp_file_path, updated_segs);
+
+        mydedup_upload_segs(temp_file_path, updated_segs);
+
+        mydedup_remove_segs(related_segs);
 
 
-    seg_info_p segs[MAX_SEG_AMOUNT];
-    int num_seg = 0;
-    PF("[%s]: %d\n", __func__, __LINE__);
-    ret = mydedup_segmentation(temp_file_path, &num_seg, segs);
-
-//    PF("[%s]: Showing new segs\n", __func__);
-//    debug_showsegs(segs, num_seg);
+        remove(temp_file_path);
 
 
-//    SEEFILE(path_s);
-
-    char file_proxy[MAX_PATH_LEN];
-
-    get_fileproxy_path(file_proxy, path_s, MAX_PATH_LEN);
-
-    PF("[%s]: %d\n", __func__, __LINE__);
-
-    FILE *fp_fileproxy = FFOPEN__(file_proxy, "w");//closed
+        FILE *fp_fileproxy = FFOPEN__(path_s, "w");//closed
 
 
-    if (fp_fileproxy == NULL) {
-//        errNum = errno;
-        PF("[%s]:open %s at line %d failed with reason [%s] ERROR\n", __func__, file_proxy, __LINE__, strerror(errno));
-        PF("[%s]:open %s %d ERROR\n", __func__, file_proxy, __LINE__);
+        for (int i = 0; i < oldseg1.size(); i++) {
+            fprintf(fp_fileproxy, "%s %ld\n", oldseg1[i]->md5, oldseg1[i]->seg_size);
+        }
+
+
+        for (int i = 0; i < updated_segs.size(); i++) {
+            fprintf(fp_fileproxy, "%s %ld\n", updated_segs[i]->md5, updated_segs[i]->seg_size);
+        }
+
+
+        for (int i = 0; i < oldseg2.size(); i++) {
+            fprintf(fp_fileproxy, "%s %ld\n", oldseg2[i]->md5, oldseg2[i]->seg_size);
+        }
+
+        FFCLOSE__(fp_fileproxy);
     }
-
-    PF("[%s]: %d\n", __func__, __LINE__);
-
-
-    int i = 0;
-
-    PF("[%s]: %d\n", __func__, __LINE__);
-
-    for (i = 0; i < num_seg_old - 1; i++) {
-//        segs[i]->ref_count = 1;
-        fprintf(fp_fileproxy, "%s-%ldn\n", segs_old[i]->md5, segs_old[i]->seg_size);
-    }
-
-    PF("[%s]: %d\n", __func__, __LINE__);
-
-
-    long offset = 0;
-
-
-    for (i = 0; i < num_seg; i++) {
-//        segs[i]->ref_count = 1;
-        fprintf(fp_fileproxy, "%s-%ldn\n", segs[i]->md5, segs[i]->seg_size);
-
-//        get_fileproxy_path(file_proxy, path_s, MAX_PATH_LEN);
-
-        mydedup_extract_and_upload_seg(temp_file_path, segs[i], offset);
-        offset += segs[i]->seg_size;
-    }
-
-    PF("[%s]: line %d\n", __func__, __LINE__);
-//    SEEFILE(file_proxy);
-    FFCLOSE__(fp_fileproxy);
-    struct stat statbuf;
-    get_from_proxy(path_s, &statbuf);
-
-    struct stat statbuf2;
-    lstat(file_proxy, &statbuf2);
-
-    PF("[%s]: line: %d, size is %zu, size2 is %zu\n", __func__, __LINE__, statbuf.st_size, statbuf2.st_size);
-    statbuf.st_size += statbuf2.st_size;
-
-    remove(path_s);
-
-
-    set_loc(file_proxy, ON_CLOUD);
-    set_dirty(file_proxy, DIRTY);
-
-    rename(file_proxy, path_s);
-    PF("[%s]: line: %d, size is %zu\n", __func__, __LINE__, statbuf.st_size);
-    clone_2_proxy(path_s, &statbuf);
-    return 0;
+    return ret;
 }
 
-void mydedup_remove_seg(char *md5) {
+
+int mydedup_read(const char *pathname, char *buf, size_t size, off_t offset, struct fuse_file_info *fi) {
+    int ret = 0;
+    int loc = ON_SSD;
+    char path_s[MAX_PATH_LEN];
+    get_path_s(path_s, pathname, MAX_PATH_LEN);
+
+    PF("[%s]:\t getting loc\n", __func__);
+    get_loc(path_s, &loc);
+    if (loc == ON_SSD) {
+        PF("[%s]:\t return cloudfs_read_node(pathname, buf, size, offset, fi);\n", __func__);
+        return cloudfs_read_node(pathname, buf, size, offset, fi);
+    } else {
+
+        PF("[%s]:\t loc == ON_CLOUD\n", __func__);
+
+        std::ifstream proxy(path_s);
+
+//        while (proxy >> md5 >> seg_size) {
+//            seg_info_p new_seg = (seg_info_p) malloc(sizeof(seg_info_t));
+//            new_seg->seg_size = seg_size;
+//            memset(new_seg->md5, '\0', 2 * MD5_DIGEST_LENGTH + 1);
+//            memcpy(new_seg->md5, md5.c_str(), 2 * MD5_DIGEST_LENGTH);
+//            segs.push_back(new_seg);
+//        }
+        proxy.close();
+
+        std::vector <seg_info_p> segs;
+
+        mydedup_read_seginfo(path_s, segs);
+        std::string md5;
+        size_t segsize = 0;
+
+        size_t upperbound = 0;
+        size_t lowerbound = 0;
+        size_t offset_change = 0;
+
+        std::vector <seg_info_p> related_segs;
+
+        for (int i = 0; i < segs.size(); i++) {
+            lowerbound = upperbound;
+            upperbound += segs[i]->seg_size;
+            if (upperbound < offset) {
+                offset_change += segs[i]->seg_size;
+            } else if (lowerbound >= offset + size) {
+                break;
+            } else {
+                related_segs.push_back(segs[i]);
+            }
+        }
+
+
+        char temp_file_path[MAX_PATH_LEN];
+        get_tempfile_path_dedup(temp_file_path, path_s, MAX_PATH_LEN);
+        mydedup_down_segs(temp_file_path, related_segs);
+
+        int fd = open(temp_file_path, O_WRONLY);
+
+        ret = pread(fd, buf, size, offset - offset_change);
+
+        close(fd);
+
+        remove(temp_file_path);
+
+        return ret;
+
+    }
+
+
+}
+
+void mydedup_remove_segs(std::vector <seg_info_p> &segs) {
+    int i;
+    for (i = 0; i < segs.size(); i++) {
+        mydedup_remove_one_seg(segs[i]->md5);
+    }
+}
+
+void mydedup_remove_one_seg(char *md5) {
     int ref;
     char seg_proxy_path[MAX_PATH_LEN];
 
@@ -517,215 +672,16 @@ void mydedup_remove_seg(char *md5) {
     }
 }
 
-int mydedup_uploadfile(char *path_s) {
+int mydedup_release(const char *pathname UNUSED, struct fuse_file_info *fi UNUSED){
+    PF("[%s]:\t pathname: %s\n", __func__, pathname);
+    char path_s[MAX_PATH_LEN];
+    get_path_s(path_s, pathname, MAX_PATH_LEN);
+    PF("[%s]:\t pathname = %s \t path_s = %s \n", __func__, pathname, path_s);
 
-    PF("[%s]: %s\n", __func__, path_s);
-    int ret = 0;
-
-    seg_info_p segs[MAX_SEG_AMOUNT];
-    int num_seg = 0;
-
-    ret = mydedup_segmentation(path_s, &num_seg, segs);
-
-    char file_proxy[MAX_PATH_LEN];
-
-    get_fileproxy_path(file_proxy, path_s, MAX_PATH_LEN);
-
-    FILE *fp_fileproxy = FFOPEN__(file_proxy, "w");//closed
-
-
-    int i = 0;
-    long offset = 0;
-
-    for (i = 0; i < num_seg; i++) {
-//        segs[i]->ref_count = 1;
-        fprintf(fp_fileproxy, "%s-%ld\n", segs[i]->md5, segs[i]->seg_size);
-
-//        get_fileproxy_path(file_proxy, path_s, MAX_PATH_LEN);
-
-        mydedup_extract_and_upload_seg(path_s, segs[i], offset);
-        offset += segs[i]->seg_size;
-    }
-    FFCLOSE__(fp_fileproxy);
-    struct stat statbuf;
-    lstat(path_s, &statbuf);
-    remove(path_s);
-
-
-    set_loc(file_proxy, ON_CLOUD);
-    set_dirty(file_proxy, DIRTY);
-
-    PF("[%s]: line %d, %s, size is %zu\n", __func__, __LINE__, path_s, statbuf.st_size);
-    rename(file_proxy, path_s);
-    clone_2_proxy(path_s, &statbuf);
-    return 0;
-}
-
-bool file_exist(const char *path_s) {
-    return (access(path_s, 0) == 0);
-}
-
-int mydedup_read_seg(char *buf, seg_info_p seg, int start, int end){
-
-}
-
-int mydedup_download_all(char *path_s, seg_info_p segs[], int end) {
-    return mydedup_download_and_combine(path_s, segs, 0, end);
-}
-
-
-int mydedup_download_and_combine(char *path_s, seg_info_p segs[], int start, int end) {
-    PF("[%s]:path_s: %s\t start: %d\t end:%d\n", __func__, path_s, start, end);
-    long ret = 0;
-    FILE *tfp = FFOPEN__(path_s, "wb");//closed
-    char *buf;
-    long offset = 0;
-
-    if (tfp == NULL) {
-        ret = cloudfs_error(__func__);
-        FFCLOSE__(tfp);
-        return ret;
-    }
-
-    for (int i = start; i <= end; i++) {
-        char tempseg_path[MAX_SEG_AMOUNT];
-        get_tempseg_path(tempseg_path, segs[i]->md5, MAX_SEG_AMOUNT);
-        if(!file_exist(tempseg_path)){
-            seg_down(tempseg_path, segs[i]->md5);
-        }
-
-        FILE *fp = FFOPEN__(tempseg_path, "rb");//closed
-        if (fp == NULL) {
-            ret = cloudfs_error(__func__);
-            FFCLOSE__(fp);
-            FFCLOSE__(tfp);
-            return ret;
-        }
-
-        buf = (char *) malloc(sizeof(char) * segs[i]->seg_size);
-        ret = fread(buf, 1, segs[i]->seg_size, fp);
-        ret = fwrite(buf, 1, segs[i]->seg_size, tfp);
-        PF("[%s]:read from %s and put into %s\n", __func__, tempseg_path, path_s);
-        FFCLOSE__(fp);
-        free(buf);
-        if(i == end){
-//            SEEFILE(tempseg_path);
-//            SEEFILE(path_s);
-        }
-    }
-
-    for (int i = start; i < end; i++) {
-        char tempseg_path[MAX_SEG_AMOUNT];
-        get_tempseg_path(tempseg_path, segs[i]->md5, MAX_SEG_AMOUNT);
-        if(file_exist(tempseg_path)){
-            remove(tempseg_path);
-        }
-    }
-
-    FFCLOSE__(tfp);
-    tfp = FFOPEN__(path_s, "rb");
-    fseek(tfp, 0, SEEK_END);
-    ret = ftell(tfp);
-    FFCLOSE__(tfp);
+    int ret = close(fi->fh);
     return ret;
-//    ret = fseek(fp, offset, SEEK_SET);
-//    if (ret < 0) {
-//        ret = cloudfs_error(__func__);
-//        FFCLOSE__(fp);
-//        FFCLOSE__(tfp);
-//        return ret;
-//    }
-//    buf = (char *) malloc(sizeof(char) * len);
-//    ret = fread(buf, 1, len, fp);
-//    ret = fwrite(buf, 1, len, tfp);
-//    free(buf);
-//
-//    FFCLOSE__(fp);
-//    FFCLOSE__(tfp);
-
 
 }
-
-int mydedup_extract_and_upload_seg(char *path_s, seg_info_p seg, long offset) {
-    int ret = 0;
-
-    char seg_proxy_path[MAX_PATH_LEN];
-    get_seg_proxy_path(seg_proxy_path, seg->md5, MAX_PATH_LEN);
-    FILE *fp;
-    if (!file_exist(seg_proxy_path)) {// not in hash table
-        //UPLOAD TO CLOUD
-
-        fp = FFOPEN__(seg_proxy_path, "w+");
-        FFCLOSE__(fp);
-
-        set_ref(seg_proxy_path, 1);//initial reference value
-
-        seg->oncloud = true;
-        char tempseg_path[MAX_PATH_LEN];
-
-        get_tempseg_path(tempseg_path, seg->md5, MAX_PATH_LEN);
-        extract_seg(path_s, offset, seg->seg_size, tempseg_path);
-        seg_upload(tempseg_path, seg->md5, seg->seg_size);
-        remove(tempseg_path);
-    } else {
-        //already have same segment in cloud
-        int refcnt = 0;
-        get_ref(seg_proxy_path, &refcnt);
-        if (refcnt == 0) {
-            PF("[%s]:ERROR!! \tFile %s have 0 refcnt and is not deleted!!!\n", __func__, seg_proxy_path);
-        }
-        set_ref(seg_proxy_path, refcnt + 1);//refcnt plus one
-        seg->oncloud = true;
-    }
-    return ret;
-}
-
-int seg_upload_one(char *pathname, long offset, char *key, long len) {
-
-}
-
-//extract a seg from segpathname and put it in target_file
-long extract_seg(char *pathname, long offset, long len, char *target_file) {
-    PF("[%s]:pathname: %s\t offset: %ld\t len: %ld\t target_file:%s\n", __func__, pathname, offset, len, target_file);
-    long ret = 0;
-    FILE *fp = FFOPEN__(pathname, "rb");
-    FILE *tfp = FFOPEN__(target_file, "wb");
-    char *buf;
-    if (fp == NULL) {
-        ret = cloudfs_error(__func__);
-        FFCLOSE__(fp);
-        FFCLOSE__(tfp);
-        return ret;
-    }
-    if (tfp == NULL) {
-        ret = cloudfs_error(__func__);
-        FFCLOSE__(fp);
-        FFCLOSE__(tfp);
-        return ret;
-    }
-    ret = fseek(fp, offset, SEEK_SET);
-    if (ret < 0) {
-        ret = cloudfs_error(__func__);
-        FFCLOSE__(fp);
-        FFCLOSE__(tfp);
-        return ret;
-    }
-    buf = (char *) malloc(sizeof(char) * len);
-    ret = fread(buf, 1, len, fp);
-    ret = fwrite(buf, 1, len, tfp);
-    free(buf);
-
-    FFCLOSE__(fp);
-    FFCLOSE__(tfp);
-
-    tfp = FFOPEN__(target_file, "rb");
-    fseek(tfp, 0, SEEK_END);
-    ret = ftell(tfp);
-    FFCLOSE__(tfp);
-
-    return ret;
-}
-
 
 int set_ref(const char *pathname, int value) {
 
@@ -743,51 +699,13 @@ int set_ref(const char *pathname, int value) {
     return ret;
 }
 
-int get_ref(const char *pathname, int *value) {
+int get_ref(const char *pathname, int *value_p) {
     int ret;
-    ret = lgetxattr(pathname, "user.ref_cnt", value, sizeof(int));
-    PF("[%s]: \t%s ref_count is %d\n", __func__, pathname, *value);
+    ret = lgetxattr(pathname, "user.ref_cnt", value_p, sizeof(int));
+    PF("[%s]: \t%s ref_count is %d\n", __func__, pathname, *value_p);
     return ret;
 
 }
-
-void ref_plus_one(char *md5) {
-    char seg_proxy_path[MAX_PATH_LEN];
-    get_seg_proxy_path(seg_proxy_path, md5, MAX_PATH_LEN);
-
-    FILE *fp;
-//    fp = FFOPEN__(seg_proxy_path, "r");
-    if (file_exist(seg_proxy_path)) {// not in hash table
-        PF("[%s]\t create SEGPROXY %s for md5: %s\n", __func__, seg_proxy_path, md5);
-        fp = FFOPEN__(seg_proxy_path, "w+");
-        FFCLOSE__(fp);
-        set_ref(seg_proxy_path, 1);//initial reference value
-    } else {
-        int refcnt = 0;
-        get_ref(seg_proxy_path, &refcnt);
-        if (refcnt == 0) {
-            PF("[%s]:ERROR!! \tproxy File %s have 0 refcnt and is not deleted!!!\n", __func__, seg_proxy_path);
-        }
-
-        PF("[%s]\t SEGPROXY %s for md5: %s already exist, increase old refcnt(%d) by 1\n", __func__, seg_proxy_path,
-           md5, refcnt);
-        set_ref(seg_proxy_path, refcnt + 1);//refcnt plus one
-
-    }
-}
-
-
-void seg_down(char *pathname, char *key) {
-    cloud_get(pathname, key);
-
-//    oufile = FFOPEN__(pathname, "wb");
-//    cloud_get_object(BUCKET, key, get_buffer);
-//    cloud_print_error();
-//    FFCLOSE__(oufile);
-
-
-}
-
 
 void seg_upload(char *pathname, char *key, long size) {
 
@@ -797,3 +715,8 @@ void seg_upload(char *pathname, char *key, long size) {
 //    cloud_print_error();
 //    FFCLOSE__(infile);
 }
+
+
+
+
+

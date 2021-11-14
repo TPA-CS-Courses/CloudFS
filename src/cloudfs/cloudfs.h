@@ -18,6 +18,9 @@ struct cloudfs_state {
     char no_dedup;
 };
 
+extern FILE *infile;
+extern FILE *outfile;
+
 int get_buffer(const char *buffer, int bufferLength);
 int put_buffer(char *buffer, int bufferLength);
 int cloudfs_start(struct cloudfs_state *state,
@@ -42,4 +45,5 @@ int cloudfs_error(const char *error_str);
 void cloudfs_get_fullpath(const char *path, char *fullpath);
 int cloudfs_getattr(const char *pathname, struct stat *statbuf);
 int get_from_proxy(const char *path_s, struct stat *statbuf_p);
+int cloudfs_write_node(const char *pathname, const char *buf, size_t size, off_t offset, struct fuse_file_info *fi);
 #endif
