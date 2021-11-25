@@ -122,6 +122,8 @@ cloudfs: $(BUILD)/bin/cloudfs
 CLOUDFS_OBJS = $(BUILD)/obj/cloudfs.o \
                $(BUILD)/obj/cloudapi.o \
                $(BUILD)/obj/mydedup.o \
+               $(BUILD)/obj/mysnapshot.o \
+               $(BUILD)/obj/mycache.o \
                $(BUILD)/obj/main.o
 #You can append other objects
 

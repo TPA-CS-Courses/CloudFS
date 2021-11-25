@@ -29,7 +29,7 @@
 #include "cloudfs.h"
 #include "mydedup.h"
 
-
+//#define SHOWPF
 
 #define UNUSED __attribute__((unused))
 
@@ -91,7 +91,6 @@ int get_buffer(const char *buffer, int bufferLength) {
 //    PF("[%s]get buffer %d\n",__func__, bufferLength);
     return fwrite(buffer, 1, bufferLength, outfile);
 }
-
 
 
 int put_buffer(char *buffer, int bufferLength) {
@@ -223,6 +222,9 @@ void get_path_s(char *full_path, const char *pathname, int bufsize) {
 //    PF("[%s]\t pathname is %s\n", __func__, pathname);
 //}
 
+int cloudfs_ioctl(const char *path, int cmd, void *arg, struct fuse_file_info *fi, unsigned int flags, void *data) {
+
+}
 
 
 void get_path_t(char *path_t, const char *pathname, int bufsize) {
@@ -294,7 +296,20 @@ int cloudfs_getattr_node(const char *pathname, struct stat *statbuf) {
         return -errno;
     } else {
         if (is_on_cloud(path_s)) {
-            get_from_proxy(path_s, statbuf);
+            if (fstate->no_dedup) {
+                get_from_proxy(path_s, statbuf);
+            } else {
+                get_from_proxy(path_s, statbuf);
+                std::string md5;
+                std::ifstream proxy(path_s);
+                statbuf->st_size = 0;
+                size_t seg_size = 0;
+                while (proxy >> md5 >> seg_size) {
+                    statbuf->st_size += seg_size;
+                }
+
+                proxy.close();
+            }
         }
     }
 
@@ -1148,6 +1163,9 @@ int get_from_proxy(const char *path_s, struct stat *statbuf_p) {
     TRY(lgetxattr(path_s, "user.st_gid", &statbuf_p->st_gid, sizeof(gid_t)));
     TRY(lgetxattr(path_s, "user.st_rdev", &statbuf_p->st_rdev, sizeof(dev_t)));
     TRY(lgetxattr(path_s, "user.st_size", &statbuf_p->st_size, sizeof(off_t)));
+
+
+    PF("[%s]: get size = %zu from %s\n", __func__, statbuf_p->st_size, path_s);
     TRY(lgetxattr(path_s, "user.st_blksize", &statbuf_p->st_blksize, sizeof(blksize_t)));
     TRY(lgetxattr(path_s, "user.st_blocks", &statbuf_p->st_blocks, sizeof(blkcnt_t)));
     return ret;
@@ -1523,6 +1541,16 @@ int cloudfs_rmdir(const char *pathname UNUSED) {
 }
 
 int cloudfs_unlink(const char *pathname UNUSED) {
+    int ret = 0;
+    if (fstate->no_dedup) {
+        ret = cloudfs_unlink_node(pathname);
+    } else {
+        ret = mydedup_unlink(pathname);
+    }
+    return ret;
+}
+
+int cloudfs_unlink_node(const char *pathname UNUSED) {
     PF("[%s]:\t pathname: %s\n", __func__, pathname);
     INFOF();
     int ret = 0;
@@ -1547,7 +1575,7 @@ int cloudfs_unlink(const char *pathname UNUSED) {
     return ret;
 }
 
-int cloudfs_truncate(const char *pathname UNUSED, off_t newsize UNUSED) {
+int cloudfs_truncate_node(const char *pathname UNUSED, off_t newsize UNUSED) {
 
     PF("[%s]:\t pathname: %s\n", __func__, pathname);
     INFOF();
@@ -1583,6 +1611,16 @@ int cloudfs_truncate(const char *pathname UNUSED, off_t newsize UNUSED) {
 //        return cloudfs_error("utimens failed");
 //    }
 
+    return ret;
+}
+
+int cloudfs_truncate(const char *pathname UNUSED, off_t newsize UNUSED) {
+    int ret = 0;
+    if (fstate->no_dedup) {
+        ret = cloudfs_truncate_node(pathname, newsize);
+    } else {
+        ret = mydedup_truncate(pathname, newsize);
+    }
     return ret;
 }
 
@@ -1762,6 +1800,7 @@ int cloudfs_start(struct cloudfs_state *state,
     cloudfs_operations.unlink = cloudfs_unlink;
     cloudfs_operations.rmdir = cloudfs_rmdir;
     cloudfs_operations.truncate = cloudfs_truncate;
+    cloudfs_operations.ioctl = cloudfs_ioctl;
 
     int argc = 0;
     char *argv[10];

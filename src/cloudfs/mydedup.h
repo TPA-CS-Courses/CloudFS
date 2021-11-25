@@ -56,7 +56,7 @@ void mydedup_upload_file(char *path_s);
 
 int mydedup_getattr(const char *pathname, struct stat *statbuf);
 
-void mydedup_read_seginfo(const char *path_s, std::vector <seg_info_p> &segs);
+void mydedup_get_seginfo(const char *path_s, std::vector <seg_info_p> &segs);
 
 
 int mydedup_write(const char *pathname, const char *buf, size_t size, off_t offset,
@@ -76,6 +76,10 @@ int set_ref(const char *pathname, int value);
 int get_ref(const char *pathname, int *value_p);
 
 void seg_upload(char *pathname, char *key, long size);
+
+int mydedup_unlink(const char *pathname);
+
+int mydedup_truncate(const char *pathname, off_t newsize);
 
 
 #endif //SRC_MYDEDUP2_H
