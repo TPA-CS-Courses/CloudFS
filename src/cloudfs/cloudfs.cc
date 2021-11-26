@@ -24,10 +24,12 @@
 #include <openssl/md5.h>
 #include <time.h>
 #include <unistd.h>
+
 #include "cloudapi.h"
 #include "dedup.h"
 #include "cloudfs.h"
 #include "mydedup.h"
+#include "mycache.h"
 
 //#define SHOWPF
 
@@ -77,6 +79,8 @@
 #define FILEPROXYDIR (".fileproxy")
 #define SEGPROXYDIR (".segproxy")
 #define TEMPSEGDIR (".tempsegs")
+
+#define CACHEDIR (".cache")
 
 static struct cloudfs_state state_;
 static struct cloudfs_state *fstate;
@@ -186,6 +190,9 @@ void *cloudfs_init(struct fuse_conn_info *conn UNUSED) {
     snprintf(temp_dir_ssd, MAX_PATH_LEN, "%s%s", fstate->ssd_path, TEMPSEGDIR);
     mkdir(temp_dir_ssd, S_IRWXU | S_IRWXG | S_IROTH | S_IXOTH);
 
+    snprintf(temp_dir_ssd, MAX_PATH_LEN, "%s%s", fstate->ssd_path, CACHEDIR);
+    mkdir(temp_dir_ssd, S_IRWXU | S_IRWXG | S_IROTH | S_IXOTH);
+
     mydedup_init(fstate->rabin_window_size, fstate->avg_seg_size, fstate->min_seg_size,
                  fstate->max_seg_size, logfile, fstate);
     return NULL;
@@ -198,6 +205,9 @@ void cloudfs_destroy(void *data UNUSED) {
 
     cloud_destroy();
     cloud_print_error();
+
+    mydedup_destroy();
+
 }
 
 void get_path_s(char *full_path, const char *pathname, int bufsize) {
@@ -1749,7 +1759,6 @@ int cloudfs_readlink(const char *pathname UNUSED, char *buf UNUSED, size_t bufsi
 }
 
 void show_fuse_state() {
-
     PF("[start] fstate->ssd_path is %s\n", fstate->ssd_path);
     PF("fstate->fuse_path is %s\n", fstate->fuse_path);
     PF("fstate->hostname is %s\n", fstate->hostname);

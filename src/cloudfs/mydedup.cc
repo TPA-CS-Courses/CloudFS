@@ -30,11 +30,12 @@
 #include "dedup.h"
 #include "cloudfs.h"
 #include "mydedup.h"
+#include "mycache.h"
 
 #define BUF_SIZE (1024)
 
 
-//#define SHOWPF
+#define SHOWPF
 
 #define UNUSED __attribute__((unused))
 
@@ -102,7 +103,14 @@ void mydedup_init(int window_size, int avg_seg_size, int min_seg_size, int max_s
     de_cfg->logfile = logfile;
     de_cfg->fstate = fstate;
 
+    mycache_init(logfile, fstate);
+
     PF("[%s]:\n", __func__);
+}
+
+void mydedup_destroy() {
+
+    mycache_destroy();
 }
 
 void get_tempfile_path_dedup(char *tempfile_path, char *path_s, int bufsize) {
@@ -263,9 +271,11 @@ int mydedup_down_segs(char *path_s, std::vector <seg_info_p> &segs) {
     }
     PF("[%s]: size is %zu\n", __func__, segs.size());
     for (int i = 0; i < segs.size(); i++) {
-        PF("[%s]: i: %d   cloud_get_object(BUCKET, %s, get_buffer);\n", __func__, i, segs[i]->md5);
-        cloud_get_object(BUCKET, segs[i]->md5, get_buffer);
-        PF("[%s]: i: %d   cloud_get_object(BUCKET, %s, get_buffer);\n", __func__, i, segs[i]->md5);
+        PF("[%s]: i: %d   cloud_get_cache(BUCKET, %s, get_buffer);\n", __func__, i, segs[i]->md5);
+//        cloud_get_object(BUCKET, segs[i]->md5, get_buffer);
+
+        cloud_get_cache(segs[i]->md5, segs[i]->seg_size);
+        PF("[%s]: i: %d   cloud_get_cache(BUCKET, %s, get_buffer);\n", __func__, i, segs[i]->md5);
     }
     PF("[%s]: FFCLOSE__\n", __func__);
     FFCLOSE__(outfile);
@@ -288,10 +298,15 @@ void mydedup_upload_segs(char *path_s, std::vector <seg_info_p> &segs) {
             FFCLOSE__(fp);
             set_ref(seg_proxy_path, 1);//initial reference value
 
-            cloud_put_object(BUCKET, segs[i]->md5, segs[i]->seg_size, put_buffer);
-
-            PF("[%s] cloud_put_object with key %s\n", __func__, segs[i]->md5);
+//            cloud_put_object(BUCKET, segs[i]->md5, segs[i]->seg_size, put_buffer);
+            cloud_put_cache(segs[i]->md5, segs[i]->seg_size);
+            PF("[%s] cloud_put_cache with key %s\n", __func__, segs[i]->md5);
         } else {
+            //already in cloud or cache
+            std::string key(segs[i]->md5);
+            cache_get(key);
+            // TO DO
+            // IS THIS THE BEST WAY?
             int refcnt = 0;
             get_ref(seg_proxy_path, &refcnt);
             set_ref(seg_proxy_path, refcnt + 1);//refcnt plus one
@@ -302,6 +317,7 @@ void mydedup_upload_segs(char *path_s, std::vector <seg_info_p> &segs) {
     FFCLOSE__(infile);
 
 }
+
 
 void mydedup_upload_file(char *path_s) {
     std::vector <seg_info_p> segs;
@@ -570,7 +586,6 @@ int mydedup_read(const char *pathname, char *buf, size_t size, off_t offset, str
         PF("[%s] offset is %zu, offset_change is %zu\n", __func__, offset, offset_change);
         ret = pread(fd, buf, size, offset - offset_change);
 
-
         close(fd);
 
         remove(temp_file_path);
@@ -641,22 +656,25 @@ int set_ref(const char *pathname, int value) {
     int ref_count = value;
     int ret;
     PF("[%s]: \tset refcount of %s as %d\n", __func__, pathname, value);
-    ret = lsetxattr(pathname, "user.ref_cnt", &ref_count, sizeof(int), 0);
+    FILE *fp2 = fopen(pathname, "w");
+    fprintf(fp2, "%d\n", value);
+
+    fclose(fp2);
+//    ret = lsetxattr(pathname, "user.ref_cnt", &ref_count, sizeof(int), 0);
     return ret;
 }
 
 int get_ref(const char *pathname, int *value_p) {
     int ret;
-    ret = lgetxattr(pathname, "user.ref_cnt", value_p, sizeof(int));
+    FILE *fp = fopen(pathname, "r");
+    fscanf(fp, "%d", value_p);
+    fclose(fp);
+//    ret = lgetxattr(pathname, "user.ref_cnt", value_p, sizeof(int));
     PF("[%s]: \t%s ref_count is %d\n", __func__, pathname, *value_p);
     return ret;
 
 }
 
-void seg_upload(char *pathname, char *key, long size) {
-
-    cloud_put(pathname, key, size);
-}
 
 int mydedup_unlink(const char *pathname) {
     int ret = 0;
@@ -701,7 +719,7 @@ int mydedup_truncate(const char *pathname UNUSED, off_t newsize UNUSED) {
             for (int i = 0; i < segs.size(); i++) {
                 if (lowerbound < newsize) {
                     related_segs.push_back(segs[i]);
-                }else{
+                } else {
                     break;
                 }
                 lowerbound += segs[i]->seg_size;
@@ -710,7 +728,7 @@ int mydedup_truncate(const char *pathname UNUSED, off_t newsize UNUSED) {
             ret = truncate(path_s, newsize);
             mydedup_remove_segs(segs);
             set_loc(path_s, ON_SSD);
-        }else{
+        } else {
             std::vector <seg_info_p> segs;
             mydedup_get_seginfo(path_s, segs);
             size_t lowerbound = 0;
@@ -726,14 +744,14 @@ int mydedup_truncate(const char *pathname UNUSED, off_t newsize UNUSED) {
                 if (upperbound < newsize) {
                     oldseg1.push_back(segs[i]);
                     offset_change = upperbound;
-                }else if(lowerbound >= newsize){
-                    if(after == 0){
+                } else if (lowerbound >= newsize) {
+                    if (after == 0) {
                         oldseg2.push_back(segs[i]);
-                    }else{
+                    } else {
                         related_segs.push_back(segs[i]);
-                        after --;
+                        after--;
                     }
-                }else{
+                } else {
                     related_segs.push_back(segs[i]);
                     PF("[%s]:\t related_segs.push_back(%s);\n", __func__, segs[i]->md5);
                 }
@@ -785,6 +803,7 @@ int mydedup_truncate(const char *pathname UNUSED, off_t newsize UNUSED) {
     }
     return ret;
 }
+
 
 
 

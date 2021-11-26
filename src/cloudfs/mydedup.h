@@ -31,6 +31,8 @@ int ffclose_(const char *func, FILE *s);
 void mydedup_init(int window_size, int avg_seg_size, int min_seg_size, int max_seg_size, FILE *logfile,
                   struct cloudfs_state *fstate);
 
+void mydedup_destroy();
+
 void get_tempfile_path_dedup(char *tempfile_path, char *path_s, int bufsize);
 
 
