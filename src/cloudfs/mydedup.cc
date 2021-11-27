@@ -82,6 +82,23 @@ FILE *ffopen_(const char *func, const char *filename, const char *mode) {
     return r;
 }
 
+
+void debug_showfile(const char *file, const char *functionname, int line) {
+    PF("[%s] is called by %s at line %d to show the content of %s\n", __func__, functionname, line, file);
+
+    FILE *f;
+    char c;
+    f = FFOPEN__(file, "rt");
+
+    while ((c = fgetc(f)) != EOF) {
+        PF("%c", c);
+    }
+
+    FFCLOSE__(f);
+
+    PF("\n[%s]: END OF %s\n\n\n", __func__, file);
+}
+
 int ffclose_(const char *func, FILE *s) {
     PF("[%s]: closed %p\n", func, s);
     return fclose(s);
@@ -110,7 +127,7 @@ void mydedup_init(int window_size, int avg_seg_size, int min_seg_size, int max_s
 
 void mydedup_destroy() {
 
-    mycache_destroy();
+
 }
 
 void get_tempfile_path_dedup(char *tempfile_path, char *path_s, int bufsize) {
@@ -241,9 +258,9 @@ int mydedup_segmentation(char *fpath, std::vector <seg_info_p> &segs) {
     if (segment_len > 0) {
         MD5_Final(md5, &ctx);
         char md5string[2 * MD5_DIGEST_LENGTH + 1];
-//        PF("%u", segment_len);
+        PF("%u\n", segment_len);
         for (b = 0; b < MD5_DIGEST_LENGTH; b++) {
-//            PF("%02x", md5[b]);
+            PF("%02x", md5[b]);
             sprintf(md5string + b * 2, "%02x", md5[b]);
         }
 
@@ -252,8 +269,11 @@ int mydedup_segmentation(char *fpath, std::vector <seg_info_p> &segs) {
         memset(new_seg->md5, '\0', 2 * MD5_DIGEST_LENGTH + 1);
         memcpy(new_seg->md5, md5string, 2 * MD5_DIGEST_LENGTH);
         segs.push_back(new_seg);
+
     }
+
     PF("[%s] number of seg is %zu\n", __func__, segs.size());
+//    debug_pseg(__func__, segs);
     close(fd);
 }
 
@@ -292,6 +312,9 @@ void mydedup_upload_segs(char *path_s, std::vector <seg_info_p> &segs) {
         char seg_proxy_path[MAX_PATH_LEN];
         get_seg_proxy_path(seg_proxy_path, segs[i]->md5, MAX_PATH_LEN);
         PF("[%s] seg[%d]->md5 = %s\n", __func__, i, segs[i]->md5);
+
+//        PF("[%s] %d:  \n", __func__, __LINE__);
+//        debug_pseg(__func__,segs);
         if (!file_exist(seg_proxy_path)) {
 
             FILE *fp = FFOPEN__(seg_proxy_path, "w");
@@ -303,8 +326,8 @@ void mydedup_upload_segs(char *path_s, std::vector <seg_info_p> &segs) {
             PF("[%s] cloud_put_cache with key %s\n", __func__, segs[i]->md5);
         } else {
             //already in cloud or cache
-            std::string key(segs[i]->md5);
-            cache_get(key);
+//            cloud_access_cache(segs[i]->md5, segs[i]->seg_size);
+            cache_get(segs[i]->md5);
             // TO DO
             // IS THIS THE BEST WAY?
             int refcnt = 0;
@@ -312,6 +335,10 @@ void mydedup_upload_segs(char *path_s, std::vector <seg_info_p> &segs) {
             set_ref(seg_proxy_path, refcnt + 1);//refcnt plus one
             fseek(infile, segs[i]->seg_size, SEEK_CUR);
         }
+
+
+//        PF("[%s] %d:  \n", __func__, __LINE__);
+//        debug_pseg(__func__,segs);
 
     }
     FFCLOSE__(infile);
@@ -374,6 +401,7 @@ int mydedup_getattr(const char *pathname, struct stat *statbuf) {
 void mydedup_get_seginfo(const char *path_s, std::vector <seg_info_p> &segs) {
     PF("[%s]: reading seglist from file\n", __func__);
     FILE *fp_fileproxy = FFOPEN__(path_s, "r");
+//    SEEFILE(path_s);
     int num_seg = -1;
     while (!feof(fp_fileproxy)) {
 
@@ -511,7 +539,6 @@ int mydedup_write(const char *pathname UNUSED, const char *buf UNUSED, size_t si
 
         for (int i = 0; i < updated_segs.size(); i++) {
             fprintf(fp_fileproxy, "%s %ld\n", updated_segs[i]->md5, updated_segs[i]->seg_size);
-
             statbuf.st_size += updated_segs[i]->seg_size;
         }
 
@@ -522,7 +549,11 @@ int mydedup_write(const char *pathname UNUSED, const char *buf UNUSED, size_t si
         }
 
 
+
+
         FFCLOSE__(fp_fileproxy);
+
+//        SEEFILE(path_s);
 
 
         clone_2_proxy(path_s, &statbuf);
@@ -623,7 +654,8 @@ void mydedup_remove_one_seg(char *md5) {
         set_ref(seg_proxy_path, ref - 1);
         PF("[%s]: set ref of %s as ref-1 = %d\n", __func__, seg_proxy_path, ref - 1);
     } else if (ref == 1) {
-        cloud_delete_object(BUCKET, md5);
+        cloud_delete_cache(md5);
+//        cloud_delete_object(BUCKET, md5);
         remove(seg_proxy_path);
         PF("[%s]: removed key %s from cloud, removed %s\n", __func__, md5, seg_proxy_path);
     } else if (ref < 1) {
@@ -655,7 +687,7 @@ int set_ref(const char *pathname, int value) {
     }
     int ref_count = value;
     int ret;
-    PF("[%s]: \tset refcount of %s as %d\n", __func__, pathname, value);
+//    PF("[%s]: \tset refcount of %s as %d\n", __func__, pathname, value);
     FILE *fp2 = fopen(pathname, "w");
     fprintf(fp2, "%d\n", value);
 
@@ -670,7 +702,7 @@ int get_ref(const char *pathname, int *value_p) {
     fscanf(fp, "%d", value_p);
     fclose(fp);
 //    ret = lgetxattr(pathname, "user.ref_cnt", value_p, sizeof(int));
-    PF("[%s]: \t%s ref_count is %d\n", __func__, pathname, *value_p);
+//    PF("[%s]: \t%s ref_count is %d\n", __func__, pathname, *value_p);
     return ret;
 
 }

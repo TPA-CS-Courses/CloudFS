@@ -71,6 +71,7 @@
 #define SEGPROXYDIR (".segproxy")
 #define TEMPSEGDIR (".tempsegs")
 #define CACHEDIR (".cache")
+#define CACHEMASTER ("cachemaster")
 
 struct cache_config ca_cfg_s;
 struct cache_config *ca_cfg;
@@ -80,7 +81,10 @@ DLinkedNode *tail; // pseudo head
 size_t total_size;
 int cache_cnt;
 
-std::unordered_map<std::string, DLinkedNode *> cachemap;
+int get, put;
+size_t get_size, put_size;
+
+//std::unordered_map<std::string, DLinkedNode *> cachemap;
 
 //struct cloudfs_state {
 //    char ssd_path[MAX_PATH_LEN];
@@ -119,6 +123,12 @@ void get_cache_path(char *cache_path, const char *md5, int bufsize) {
     PF("[%s]: md5: %s\t cache_path:%s\n", __func__, md5, cache_path);
 }
 
+void get_cachemaster_path(char *cachemaster_path, int bufsize) {
+
+    snprintf(cachemaster_path, bufsize, "%s%s/%s", ca_cfg->fstate->ssd_path, CACHEDIR, CACHEMASTER);
+//    PF("[%s]:cachemaster_path:%s\n", __func__, cachemaster_path);
+}
+
 void cache_download(std::string key) {
     cache_download_c(key.c_str());
 }
@@ -133,6 +143,7 @@ void cache_download_c(const char *key) {
 
     outfile_c = FFOPEN__(path_cache, "wb");
     cloud_get_object(BUCKET, key, get_buffer_c);
+    get++;
     cloud_print_error();
     PF("[%s]:\t get %s(FD:%d) from cloud with key:[%s]\n", __func__, path_cache, outfile_c, key);
     PF("[%s]:\t return\n", __func__);
@@ -141,6 +152,46 @@ void cache_download_c(const char *key) {
 
 void cache_upload(std::string key, long size) {
     cache_upload_c(key.c_str(), size);
+}
+
+void rebuild() {
+
+    total_size = 0;
+
+    head = new DLinkedNode();
+    tail = new DLinkedNode();
+    head->next = tail;
+    tail->prev = head;
+    char cachemaster[MAX_PATH_LEN];
+    get_cachemaster_path(cachemaster, MAX_PATH_LEN);
+
+
+    if (file_exist(cachemaster)) {
+        std::ifstream master(cachemaster);
+        std::string key;
+        size_t size;
+        int dirty;
+        while (master >> key >> size >> dirty) {
+            total_size += size;
+            DLinkedNode *node = new DLinkedNode(key, size, dirty);
+            add_to_head(node);
+        }
+
+        master.close();
+    }
+
+}
+
+void store() {
+    DLinkedNode *n;
+
+    char cachemaster[MAX_PATH_LEN];
+    get_cachemaster_path(cachemaster, MAX_PATH_LEN);
+    std::ofstream master(cachemaster);
+    for (n = tail->prev; n != head; n = n->prev) {
+        master << n->key << " " << n->size << " " << n->dirty << "\n";
+    }
+    master.close();
 }
 
 
@@ -156,11 +207,16 @@ void cache_upload_c(const char *key, long size) {
     char path_cache[MAX_PATH_LEN];
     get_cache_path(path_cache, key, MAX_PATH_LEN);
 
-    if(!file_exist(path_cache)){
+    if (!file_exist(path_cache)) {
         PF("[%s]:\t path_cache %s not exist!\n", __func__, path_cache);
     }
     infile_c = FFOPEN__(path_cache, "rb");
     cloud_put_object(BUCKET, key, size, put_buffer_c);
+    PF("put[%s]\n", key);
+    put++;
+    put_size += size;
+
+    PF("get[%d]put[%d]getsize[%zu]putsize[%zu]\n", get, put, get_size, put_size);
     cloud_print_error();
 
     PF("[%s]:\t put %s(fp:%p) into cloud with key:[%s]\n", __func__, path_cache, infile_c, key);
@@ -174,35 +230,41 @@ void mycache_init(FILE *logfile, struct cloudfs_state *fstate) {
     ca_cfg = &ca_cfg_s;
     ca_cfg->logfile = logfile;
     ca_cfg->fstate = fstate;
-    head = new DLinkedNode();
-    tail = new DLinkedNode();
-    head->next = tail;
-    tail->prev = head;
-    total_size = 0;
+    get = 0;
+    put = 0;
+    get_size = 0;
+    put_size = 0;
+
+//    head = new DLinkedNode();
+//    tail = new DLinkedNode();
+//    head->next = tail;
+//    tail->prev = head;
+//    total_size = 0;
+
+    rebuild();
 //    cachemap = new std::unordered_map<std::string, DLinkedNode *>();
     std::string a = "";
-    cachemap.insert(std::pair<std::string, DLinkedNode *>(a, head));
+//    cachemap.insert(std::pair<std::string, DLinkedNode *>(a, head));
     PF("[%s]:\n", __func__);
+
+    store();
 }
 
 void mycache_destroy() {
-    for (auto iter = cachemap.begin(); iter != cachemap.end(); ++iter) {
-        DLinkedNode *node = iter->second;
-        if (node->dirty == 1) {
-            cache_upload(node);
-        }
-        delete node;
-    }
-    cachemap.clear();
+
+    PF("[%s] \n", __func__);
+//    cachemap.clear();
     delete ca_cfg;
 }
 
 
 int cloud_put_cache(char *key_c, size_t size) {
+
     //FILE *infile;
 
-
     std::string key(key_c);
+
+    PF("[%s] key %s, size %zu\n", __func__, key.c_str(), size);
 
     char path_cache[MAX_PATH_LEN];
     get_cache_path(path_cache, key.c_str(), MAX_PATH_LEN);
@@ -215,6 +277,8 @@ int cloud_put_cache(char *key_c, size_t size) {
         DLinkedNode *n = cache_get(key);
         if (n == nullptr) {
             //not in cache
+            cache_put(key, size, 1);
+
             FILE *tfp = FFOPEN__(path_cache, "wb");
 
 
@@ -230,17 +294,20 @@ int cloud_put_cache(char *key_c, size_t size) {
 
             PF("[%s], %s not in cache, saved %zu into cache\n", __func__, key.c_str(), size);
 
-            cache_put(key, size, 1);
+
 
         } else {
-            PF("[%s] key already in cache\n", __func__, key.c_str());
+            PF("[%s] key already in cache\n", __func__);
+            //This should not happen
         }
         PF("[%s], returned\n", __func__, key.c_str(), size);
+
+
+        store();
         return 1;
     }
 
 }
-
 
 
 int cloud_get_cache(char *key_c, size_t size) {
@@ -256,16 +323,24 @@ int cloud_get_cache(char *key_c, size_t size) {
 
     if (ca_cfg->fstate->cache_size == 0) {
         cloud_get_object(BUCKET, key.c_str(), get_buffer);
+
+
+        store();
         return 1;
     } else {
 
         DLinkedNode *n = cache_get(key);
         if (n == nullptr) {//not in cache
             //download from cloud
-            cache_download(key);
-            struct stat statbuf;
-            lstat(path_cache, &statbuf);
+
+//            struct stat statbuf;
+//            lstat(path_cache, &statbuf);
+            get_size += size;
+            PF("get[%s]\n", key.c_str());
+            PF("get[%d]put[%d]getsize[%zu]putsize[%zu]\n", get, put, get_size, put_size);
             cache_put(key, size, 0);
+
+            cache_download(key);
         }
 //        else{
 //        }
@@ -280,49 +355,119 @@ int cloud_get_cache(char *key_c, size_t size) {
         free(buf);
         FFCLOSE__(fp);
 
+
+        store();
         return 1;
     }
 
 }
 
+void cloud_delete_cache(char *key_c) {
+    //    FILE *outfile;
+    std::string key(key_c);
+    PF("[%s] key %s\n", __func__, key.c_str());
+
+    if (ca_cfg->fstate->cache_size == 0) {
+        cloud_delete_object(BUCKET, key.c_str());
+    } else {
+        DLinkedNode *n = cache_find(key);
+        if (n == nullptr) {//not in cache
+            cloud_delete_object(BUCKET, key.c_str());
+            PF("[%s] not in cache\n", __func__);
+        } else {
+            if (n->dirty == 1) {
+                //on cache, not on cloud yet
+                n->dirty = 0;
+
+            }else{
+
+                cloud_delete_object(BUCKET, key.c_str());
+            }
+            cut_node(n);
+            cache_evict(n,false);
+        }
+
+
+    }
+
+    store();
+}
+
+DLinkedNode *cache_find(std::string key) {
+    DLinkedNode *n;
+    for (n = head->next; n != tail; n = n->next) {
+        if (n->key == key) {
+            return n;
+        }
+    }
+
+    store();
+    return nullptr;
+}
+
 DLinkedNode *cache_get(std::string key) {
 
     PF("[%s] key %s\n", __func__, key.c_str());
-    if (cachemap.find(key) == cachemap.end()) {
+    DLinkedNode *n = cache_find(key);
+    if (n == nullptr) {
+        store();
         return nullptr;
     } else {
-        DLinkedNode *node = cachemap[key];
+        DLinkedNode *node = n;
         move_to_head(node);
         return node;
     }
 }
 
-void cache_evict(DLinkedNode *removed) {
-    PF("[%s] key %s, size %zu\n", __func__, removed->key.c_str(), removed->size);
+DLinkedNode *cache_get(char *key_c) {
+    std::string key(key_c);
+    PF("[%s] key %s\n", __func__, key.c_str());
+
+    DLinkedNode *n = cache_find(key);
+    if (n == nullptr) {
+        store();
+        return nullptr;
+    } else {
+        DLinkedNode *node = n;
+        move_to_head(node);
+
+        return node;
+    }
+}
+
+
+void cache_evict(DLinkedNode *removed, bool upload) {
+    PF("[%s] key %s, size %zu, upload: %d\n", __func__, removed->key.c_str(), removed->size, upload);
     cache_cnt--;
     total_size -= removed->size;
-    cachemap.erase(removed->key);
-    if (removed->dirty == 1) {
+//    cachemap.erase(removed->key);
+    if (removed->dirty == 1 && upload) {
         cache_upload(removed);
     }
-//    char path_cache[MAX_PATH_LEN];
-//    get_cache_path(path_cache, key.c_str(), MAX_PATH_LEN);
-//    remove(path_cache);
+    char path_cache[MAX_PATH_LEN];
+    get_cache_path(path_cache, removed->key.c_str(), MAX_PATH_LEN);
+
+    remove(path_cache);
     delete removed;
+
+    store();
 }
+
 
 void cache_put(std::string key, size_t size, int dirty) {
 
     PF("[%s] key %s, size %zu, dirty %d\n", __func__, key.c_str(), size, dirty);
 
-    PF("[%s] cachemap.count(key) = %llu\n", __func__, cachemap.count(key));
-
-    if (cachemap.find(key) == cachemap.end()) {
+//    PF("[%s] cachemap.count(key) = %llu\n", __func__, cachemap.count(key));
+    DLinkedNode *n = cache_find(key);
+    if (n == nullptr) {
         PF("[%s] not in cachemap\n", __func__);
         DLinkedNode *node = new DLinkedNode(key, size, dirty);
 
 
-        cachemap[key] = node;
+//        cachemap[key] = node;
+
+
 
         add_to_head(node);
 
@@ -335,7 +480,7 @@ void cache_put(std::string key, size_t size, int dirty) {
             PF("[%s] total_size %zu > cache_size: %d\n", __func__, total_size, ca_cfg->fstate->cache_size);
             while (total_size > ca_cfg->fstate->cache_size) {
                 DLinkedNode *removed = remove_tail();
-                cache_evict(removed);
+                cache_evict(removed, true);
 //                cache_cnt--;
 //                total_size -= removed->size;
 //                cachemap.erase(removed->key);
@@ -345,7 +490,7 @@ void cache_put(std::string key, size_t size, int dirty) {
         PF("[%s] put %s into cache\n", __func__, key.c_str());
     } else {
         PF("[%s] in cachemap\n");
-        DLinkedNode *node = cachemap[key];
+        DLinkedNode *node = n;
         node->size = size;
         node->dirty = dirty;
         move_to_head(node);
@@ -366,20 +511,29 @@ void add_to_head(DLinkedNode *node) {
 
     head->next = node;
 
+    store();
+
 }
 
 void cut_node(DLinkedNode *node) {
     node->prev->next = node->next;
     node->next->prev = node->prev;
+
 }
 
 void move_to_head(DLinkedNode *node) {
     cut_node(node);
     add_to_head(node);
+    store();
 }
 
 DLinkedNode *remove_tail() {
     auto node = tail->prev;
     cut_node(node);
+
     return node;
 }
+
+
+
+

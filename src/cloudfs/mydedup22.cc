@@ -262,6 +262,7 @@ int mydedup_segmentation(char *fpath, int &num_seg, std::vector <seg_info_p> & s
 
     num_seg = i;
     PF("[%s] number of seg is %d\n", __func__, (*num_seg));
+    debug_showsegs("SEGS", segs);
     close(fd);
 }
 

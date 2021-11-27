@@ -22,15 +22,17 @@ struct DLinkedNode {
     DLinkedNode() : key(""), size(0), dirty(0), prev(nullptr), next(nullptr) {}
 
     DLinkedNode(std::string _key, size_t _size, int _dirty) : key(_key), size(_size), dirty(_dirty), prev(nullptr),
-                                                            next(nullptr) {}
+                                                              next(nullptr) {}
 };
 
 
+void rebuild();
+
+void store();
+
 int get_buffer_c(const char *buffer, int bufferLength);
 
-
 int put_buffer_c(char *buffer, int bufferLength);
-
 
 void get_cache_path(char *cache_path, const char *md5, int bufsize);
 
@@ -41,7 +43,6 @@ void cache_download(const char *key);
 void cache_download_c(const char *key);
 
 void cache_upload(std::string key, long size);
-
 
 void cache_upload(const char *key, long size);
 
@@ -59,9 +60,13 @@ int cloud_put_cache(char *key, size_t size);
 
 int cloud_get_cache(char *key_c, size_t size);
 
+void cloud_delete_cache(char *key_c);
+
 DLinkedNode *cache_get(std::string key);
 
-void cache_evict(DLinkedNode *removed);
+void cache_evict(DLinkedNode *removed, bool upload);
+
+//void cache_evict(std::string key);
 
 void cache_put(std::string key, size_t size, int dirty);
 
@@ -72,6 +77,8 @@ void cut_node(DLinkedNode *node);
 void move_to_head(DLinkedNode *node);
 
 DLinkedNode *remove_tail();
+
+DLinkedNode *cache_find(std::string key);
 
 
 #endif //SRC_MYCACHE_H

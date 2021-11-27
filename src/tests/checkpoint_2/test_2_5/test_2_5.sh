@@ -23,7 +23,7 @@ source $SCRIPTS_DIR/functions.sh
 # and the reference files are in $REFERENCE_DIR
 # Creates the intermediate results in $LOG_DIR
 #
-process_args cloudfs --ssd-path $SSD_MNT_ --fuse-path $FUSE_MNT_ --threshold $THRESHOLD --avg-seg-size $AVGSEGSIZE
+process_args cloudfs --ssd-path $SSD_MNT_ --fuse-path $FUSE_MNT_ --threshold $THRESHOLD --avg-seg-size $AVGSEGSIZE --cache-size 2000
 
 # test setup
 rm -rf $REFERENCE_DIR

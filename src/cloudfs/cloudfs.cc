@@ -200,6 +200,7 @@ void *cloudfs_init(struct fuse_conn_info *conn UNUSED) {
 
 void cloudfs_destroy(void *data UNUSED) {
 
+
     cloud_delete_bucket(BUCKET);
     cloud_print_error();
 
@@ -207,7 +208,7 @@ void cloudfs_destroy(void *data UNUSED) {
     cloud_print_error();
 
     mydedup_destroy();
-
+    mycache_destroy();
 }
 
 void get_path_s(char *full_path, const char *pathname, int bufsize) {
