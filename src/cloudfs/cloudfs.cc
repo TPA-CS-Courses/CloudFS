@@ -30,6 +30,7 @@
 #include "cloudfs.h"
 #include "mydedup.h"
 #include "mycache.h"
+#include "mysnapshot.h"
 
 //#define SHOWPF
 
@@ -81,6 +82,7 @@
 #define TEMPSEGDIR (".tempsegs")
 
 #define CACHEDIR (".cache")
+
 
 static struct cloudfs_state state_;
 static struct cloudfs_state *fstate;
@@ -234,7 +236,12 @@ void get_path_s(char *full_path, const char *pathname, int bufsize) {
 //}
 
 int cloudfs_ioctl(const char *path, int cmd, void *arg, struct fuse_file_info *fi, unsigned int flags, void *data) {
+    if (fd == NULL) {
+        return -1;
+    }
+    if (cmd == CLOUDFS_SNAPSHOT) {
 
+    }
 }
 
 

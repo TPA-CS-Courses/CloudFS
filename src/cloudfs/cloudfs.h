@@ -4,6 +4,7 @@
 #define MAX_PATH_LEN 4096
 #define MAX_HOSTNAME_LEN 1024
 
+
 struct cloudfs_state {
     char ssd_path[MAX_PATH_LEN];
     char fuse_path[MAX_PATH_LEN];

@@ -174,7 +174,10 @@ void rebuild() {
         while (master >> key >> size >> dirty) {
             total_size += size;
             DLinkedNode *node = new DLinkedNode(key, size, dirty);
-            add_to_head(node);
+            node->next = head->next;
+            node->prev = head;
+            head->next->prev = node;
+            head->next = node;
         }
 
         master.close();
@@ -246,7 +249,6 @@ void mycache_init(FILE *logfile, struct cloudfs_state *fstate) {
     std::string a = "";
 //    cachemap.insert(std::pair<std::string, DLinkedNode *>(a, head));
     PF("[%s]:\n", __func__);
-
     store();
 }
 
@@ -325,7 +327,6 @@ int cloud_get_cache(char *key_c, size_t size) {
         cloud_get_object(BUCKET, key.c_str(), get_buffer);
 
 
-        store();
         return 1;
     } else {
 
@@ -488,6 +489,7 @@ void cache_put(std::string key, size_t size, int dirty) {
             }
         }
         PF("[%s] put %s into cache\n", __func__, key.c_str());
+        store();
     } else {
         PF("[%s] in cachemap\n");
         DLinkedNode *node = n;
