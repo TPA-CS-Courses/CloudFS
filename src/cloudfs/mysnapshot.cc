@@ -103,16 +103,16 @@ void mysnap_init(struct cloudfs_state *fstate, FILE *logfile) {
     sn_cfg = &sn_cfg_s;
     sn_cfg->fstate = fstate;
     sn_cfg->logfile = logfile;
-    PF("[%s] :", __func__);
-    installed = 0;
 
     char path_s[MAX_PATH_LEN];
     get_path_s(path_s, SNAPSHOT, MAX_PATH_LEN);
-
     int fd = open(path_s, O_RDONLY | O_CREAT, S_IRUSR | S_IRGRP | S_IROTH);
     close(fd);
 
+    installed = 0;
 
+    mysnap_rebuild();
+    mysnap_store();
 }
 
 timestamp_t get_msec() {
@@ -243,6 +243,10 @@ void mysnap_removedir(std::string dirpath){
 }
 
 int mysnap_restore(long timestamp) {
+    if(installed >0){
+        PF("[%s] You have snapshot installed!\n", __func__);
+        return -1;
+    }
 
     PF("[%s]:  %ld\n", __func__, timestamp);
     int snapindex = mysnap_search(timestamp);
@@ -356,7 +360,16 @@ void mysnap_store(){
     for (int i = 0; i < snapshots.size(); i++) {
         master << snapshots[i]->timestamp << " " << snapshots[i]->installed << "\n";
     }
+
     master.close();
+    struct stat statbuf;
+    if (lstat(snapmaster.c_str(), &statbuf) < 0) {
+        unlink(snapmaster.c_str());
+        return;
+    }
+    cloud_delete_object(BUCKET, "snapshotmaster.metadata");
+    cloud_put(snapmaster.c_str(), "snapshotmaster.metadata",statbuf.st_size);
+    unlink(snapmaster.c_str());
 }
 
 
@@ -365,6 +378,23 @@ void mysnap_store(){
 
 void mysnap_rebuild(){
     std::string snapmaster = snapmaster_path();
+
+    outfile = FFOPEN__(snapmaster.c_str(), "wb");
+    cloud_get_object(BUCKET, "snapshotmaster.metadata", get_buffer);
+    FFCLOSE__(outfile);
+    struct stat statbuf;
+    if (lstat(snapmaster.c_str(), &statbuf) < 0) {
+        unlink(snapmaster.c_str());
+        return;
+    }
+    if(statbuf.st_size == 0){
+        PF("[%s] %s not exist\n", __func__, snapmaster.c_str());
+        unlink(snapmaster.c_str());
+        return;
+    }
+
+
+
     std::ifstream master(snapmaster);
 
     PF("[%s]:from %s\n", __func__, snapmaster.c_str());
@@ -375,8 +405,9 @@ void mysnap_rebuild(){
         snap_info *a = new snap_info(timestamp_, installed_);
         snapshots.push_back(a);
     }
-
     master.close();
+
+    unlink(snapmaster.c_str());
 }
 
 

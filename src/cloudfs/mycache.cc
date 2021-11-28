@@ -255,8 +255,7 @@ void mycache_init(FILE *logfile, struct cloudfs_state *fstate) {
 void mycache_destroy() {
 
     PF("[%s] \n", __func__);
-//    cachemap.clear();
-    delete ca_cfg;
+
 }
 
 
