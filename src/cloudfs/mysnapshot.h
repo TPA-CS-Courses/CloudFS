@@ -5,52 +5,54 @@
 #ifndef SRC_MYSNAPSHOT_H
 #define SRC_MYSNAPSHOT_H
 
-
-#include <ctype.h>
-#include <dirent.h>
-#include <errno.h>
-#include <fcntl.h>
-#include <fuse.h>
-#include <getopt.h>
-#include <limits.h>
-#include <stdio.h>
-#include <stdlib.h>
-#include <string.h>
-#include <strings.h>
-#include <sys/stat.h>
-#include <sys/types.h>
-#include <sys/xattr.h>
-#include <openssl/md5.h>
-#include <time.h>
-#include <unistd.h>
-
-
-#include <vector>
-#include <fstream>
-#include <string>
-#include <map>
-#include <unordered_map>
-
-#include "cloudapi.h"
-#include "dedup.h"
-#include "cloudfs.h"
-#include "mydedup.h"
-#include "mycache.h"
+typedef long timestamp_t;
 
 struct snap_config {
-
     struct cloudfs_state *fstate;
     FILE *logfile;
 };
 
-class SnapshotMaster{
-public:
-    struct snap_config sn_cfg_s;
-    struct snap_config *sn_cfg;
-    std::vector<unsigned long> snapshot_records;
-    SnapshotMaster(const char *s);
-    ~SnapshotMaster();
+struct snap_info {
+    long timestamp;
+    int installed;
 
+    snap_info(long _timestamp, int _installed) : timestamp(_timestamp), installed(_installed) {}
 };
+
+
+std::string get_path_s_cpp(std::string pathname);
+
+std::string snapmaster_path();
+
+void mysnap_init(struct cloudfs_state *fstate, FILE *logfile);
+
+timestamp_t get_msec();
+
+int mysnap_chmod(const char *path_c, const char *mode_c);
+
+int mysnap_tar(timestamp_t time);
+
+std::string get_snap_name(timestamp_t current_time);
+
+std::string seg_proxy_path();
+
+//add 1 for all the blocks in cloud
+void mysnap_cloud_backup();
+
+
+int mysnap_search(long timestamp);
+
+void mysnap_removedir(std::string dirpath);
+
+int mysnap_restore(long timestamp);
+
+timestamp_t mysnap_create();
+
+
+void mysnap_store();
+
+
+void mysnap_rebuild();
+
 
 #endif //SRC_MYSNAPSHOT_H

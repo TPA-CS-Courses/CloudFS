@@ -67,6 +67,8 @@
 #define FILEPROXYDIR (".fileproxy")
 #define SEGPROXYDIR (".segproxy")
 #define TEMPSEGDIR (".tempsegs")
+#define SNAPSHOT (".snapshot")
+#define CACHEDIR (".cache")
 
 static rabinpoly_t *rp;
 struct dedup_config de_cfg_s;
@@ -81,6 +83,8 @@ FILE *ffopen_(const char *func, const char *filename, const char *mode) {
     PF("[%s]: opend %s at %p\n", func, filename, r);
     return r;
 }
+
+
 
 
 void debug_showfile(const char *file, const char *functionname, int line) {
@@ -327,8 +331,8 @@ void mydedup_upload_segs(char *path_s, std::vector <seg_info_p> &segs) {
         } else {
             //already in cloud or cache
 //            cloud_access_cache(segs[i]->md5, segs[i]->seg_size);
-            cache_get(segs[i]->md5);
-            // TO DO
+//            cache_get(segs[i]->md5);
+            // T    O DO
             // IS THIS THE BEST WAY?
             int refcnt = 0;
             get_ref(seg_proxy_path, &refcnt);

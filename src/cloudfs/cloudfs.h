@@ -47,9 +47,9 @@ void get_path_c(char *path_c, const char *path_s);
 
 int clone_2_proxy(char *path_s, struct stat *statbuf_p);
 
-void cloud_put(char *path_s, char *path_c, long size);
+void cloud_put(const char *path_s, const char *path_c, long size);
 
-void cloud_get(char *path_s, char *path_c);
+void cloud_get(const char *path_s, const char *path_c);
 
 bool is_on_cloud(char *pathname);
 
@@ -74,5 +74,7 @@ int cloudfs_write_node(const char *pathname, const char *buf, size_t size, off_t
 int cloudfs_unlink_node(const char *pathname);
 
 int cloudfs_ioctl(const char *path, int cmd, void *arg, struct fuse_file_info *fi, unsigned int flags, void *data);
+
+void chmod_recover(const char *path_s);
 
 #endif

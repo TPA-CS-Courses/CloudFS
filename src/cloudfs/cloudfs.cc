@@ -31,8 +31,10 @@
 #include "mydedup.h"
 #include "mycache.h"
 #include "mysnapshot.h"
+#include "snapshot-api.h"
 
-//#define SHOWPF
+
+#define SHOWPF
 
 #define UNUSED __attribute__((unused))
 
@@ -80,8 +82,11 @@
 #define FILEPROXYDIR (".fileproxy")
 #define SEGPROXYDIR (".segproxy")
 #define TEMPSEGDIR (".tempsegs")
-
+#define SNAPSHOT (".snapshot")
+#define SNAPSHOTPATH ("/.snapshot")
+//#define SNAPPROXY (".snapshotproxy")
 #define CACHEDIR (".cache")
+#define CACHEMASTER ("cachemaster")
 
 
 static struct cloudfs_state state_;
@@ -197,7 +202,20 @@ void *cloudfs_init(struct fuse_conn_info *conn UNUSED) {
 
     mydedup_init(fstate->rabin_window_size, fstate->avg_seg_size, fstate->min_seg_size,
                  fstate->max_seg_size, logfile, fstate);
+    mysnap_init(fstate, logfile);
+
+
+//    get_path_s(targetPath, SNAPPROXY, MAX_PATH_LEN);
+//    FILE *f = FFOPEN__(targetPath, "w");
+//    FFCLOSE__(f);
+
     return NULL;
+}
+
+void get_snapshot_path(char *snapshot_path, int bufsize) {
+
+    snprintf(snapshot_path, bufsize, "%s%s", fstate->ssd_path, SNAPSHOT);
+    PF("[%s]: snapshot_path:%s\n", __func__, snapshot_path);
 }
 
 void cloudfs_destroy(void *data UNUSED) {
@@ -235,12 +253,53 @@ void get_path_s(char *full_path, const char *pathname, int bufsize) {
 //    PF("[%s]\t pathname is %s\n", __func__, pathname);
 //}
 
-int cloudfs_ioctl(const char *path, int cmd, void *arg, struct fuse_file_info *fi, unsigned int flags, void *data) {
-    if (fd == NULL) {
+int cloudfs_ioctl(const char *path, int cmd, void *arg,
+                  struct fuse_file_info *fi, unsigned int flags,
+                  void *data) {
+    if (strcmp(path, SNAPSHOTPATH) != 0) {
         return -1;
     }
+    PF("[%s]\n",__func__);
     if (cmd == CLOUDFS_SNAPSHOT) {
+        PF("[%s]cmd == CLOUDFS_SNAPSHOT\n",__func__);
+        timestamp_t ret = mysnap_create();
+        if(ret < 0){
 
+            return cloudfs_error(__func__);
+
+        }
+        mysnap_store();
+
+        *(unsigned long*)data=(unsigned long)ret;
+        return 0;
+    }
+    else if (cmd==CLOUDFS_SNAPSHOT_LIST) {
+
+        PF("[%s]cmd==CLOUDFS_SNAPSHOT_LIST\n",__func__);
+        NOI();
+        return 0;
+    } else if (cmd==CLOUDFS_INSTALL_SNAPSHOT) {
+
+        PF("[%s]cmd==CLOUDFS_INSTALL_SNAPSHOT\n",__func__);
+        NOI();
+        return 0;
+    } else if (cmd==CLOUDFS_UNINSTALL_SNAPSHOT) {
+
+        PF("[%s]cmd==CLOUDFS_UNINSTALL_SNAPSHOT\n",__func__);
+        NOI();
+        return 0;
+    } else if (cmd==CLOUDFS_DELETE) {
+
+        PF("[%s]cmd==CLOUDFS_DELETE\n",__func__);
+        NOI();
+        return 0;
+    } else if (cmd==CLOUDFS_RESTORE) {
+        PF("[%s]cmd==CLOUDFS_RESTORE\n",__func__);
+        NOI();
+
+        int ret=mysnap_restore(*(long*)data);
+        mysnap_store();
+        return ret;
     }
 }
 
@@ -294,23 +353,19 @@ bool is_on_cloud(char *pathname) {
     }
 }
 
-int cloudfs_getattr_node(const char *pathname, struct stat *statbuf) {
+int cloudfs_getattr_(const char *pathname, struct stat *statbuf) {
 
     PF("[%s]:\t pathname: %s\n", __func__, pathname);
     INFOF();
     int ret = 0;
-
-    //
-    // TODO:
-    //
-    // Implement this function to do whatever it is supposed to do!
-    //
     char path_s[MAX_PATH_LEN];
     get_path_s(path_s, pathname, MAX_PATH_LEN);
 
+    chmod_recover(path_s);
     ret = lstat(path_s, statbuf);
 
     if (ret < 0) {
+        PF("[%s]:\tret < 0\n", __func__);
         return -errno;
     } else {
         if (is_on_cloud(path_s)) {
@@ -341,13 +396,25 @@ int cloudfs_getattr_node(const char *pathname, struct stat *statbuf) {
 
 int cloudfs_getattr(const char *pathname, struct stat *statbuf) {
     int ret = 0;
+    PF("[%s]:\tpathname %s\n", __func__, pathname);
+//    if (strcmp(pathname, SNAPSHOTPATH) == 0) {
+////        int ret;
+////        char path_s[MAX_PATH_LEN];
+////        get_path_s(path_s, SNAPPROXY, MAX_PATH_LEN);
+////        TRY(lstat(path_s));
+////        //ensure snapshot readonly
+////        statbuf->st_mode = 0100444;
+////        return ret;
+//        return 0;
+//    }
     if (fstate->no_dedup) {
-        ret = cloudfs_getattr_node(pathname, statbuf);
+        ret = cloudfs_getattr_(pathname, statbuf);
     } else {
-        ret = cloudfs_getattr_node(pathname, statbuf);
+        ret = cloudfs_getattr_(pathname, statbuf);
     }
     return ret;
 }
+
 
 int cloudfs_open(const char *pathname, struct fuse_file_info *fi) {
 
@@ -377,6 +444,7 @@ int cloudfs_open(const char *pathname, struct fuse_file_info *fi) {
         ino_t ino_f = statbuf.st_ino;
 
         PF("[%s]:\t opening %s with flag %d\n", __func__, path_t, fi->flags);
+
         fd = open(path_t, O_RDWR);
 
         fi->fh = fd;
@@ -390,6 +458,7 @@ int cloudfs_open(const char *pathname, struct fuse_file_info *fi) {
         return 0;
     } else {
         PF("[%s]:\t opening %s\n", __func__, path_s);
+        chmod_recover(path_s);
         fd = open(path_s, fi->flags);
         if (fd < 0) {
             return cloudfs_error(__func__);
@@ -461,80 +530,26 @@ int cloudfs_utimens(const char *pathname, const struct timespec tv[2]) {
 int cloudfs_readdir(const char *pathname UNUSED, void *buf UNUSED, fuse_fill_dir_t filler UNUSED, off_t offset UNUSED,
                     struct fuse_file_info *fi UNUSED) {
 
-//    PF("[%s]:\t pathname: %s\n", __func__, pathname);
-//    INFOF();
-//    DIR *d;
-//    struct dirent *de;
-//    char lost_found[MAX_PATH_LEN];
-//    get_path_s(lost_found, "/lost+found", MAX_PATH_LEN);
-//    d = (DIR * )(uintptr_t)
-//    fi->fh;
-//    de = readdir(d);
-//    if (de == NULL) {
-//        return cloudfs_error("readdir failed");;
-//    }
-
-//    PF("[%s]: pathname: %s\n", __func__, pathname);
-//    INFOF();
-//    DIR *d;
-//    char lost_found[MAX_PATH_LEN];
-//    get_path_s(lost_found, "/lost+found", MAX_PATH_LEN);
-//    struct dirent *de;
-//    struct stat s;
-//    d = (DIR * )(uintptr_t)
-//    fi->fh;
-//    de = readdir(d);
-//    if (de == NULL) {
-//        return cloudfs_error("readdir failed");;
-//    }
-//    while (1) {
-//
-//        char dirpath[MAX_PATH_LEN];
-//        get_path_s(dirpath, de->d_name, MAX_PATH_LEN);
-//        if (!strcmp(dirpath, lost_found)) {
-//            //get rid of the annoying lost+found path
-//            continue;
-//        }
-//        memset(&s, 0, sizeof(s));
-//        s.st_ino = de->d_ino;
-//        s.st_mode = de->d_type << 12;
-//        if (filler(buf, de->d_name, &s, 0) != 0) {
-//            return -ENOMEM;
-//        }
-//        if ((de = readdir(d)) == NULL) {
-//            break;
-//        }
-//    }
-
-
-//    while ((de = readdir(d)) != NULL) {
-//
-//        char dirpath[MAX_PATH_LEN];
-//        get_path_s(dirpath, de->d_name, MAX_PATH_LEN);
-//        if (!strcmp(dirpath, lost_found)) {
-//            //get rid of the annoying lost+found path
-//            continue;
-//        }
-//
-//        struct stat st;
-//        memset(&st, 0, sizeof(st));
-//        st.st_ino = de->d_ino;
-//        st.st_mode = de->d_type << 12;
-//        if (filler(buf, de->d_name, &st, 0)){
-//            break;
-//        }
-//        PF("[%s]:\t buf: %s\n", __func__, buf);
-//
-//    }
-//    closedir(d);
-//    return 0;
-
-
     int ret = 0;
     DIR *dp;
     struct dirent *de;
-    char lost_found[MAX_PATH_LEN];
-    get_path_s(lost_found, "/lost+found", MAX_PATH_LEN);
+    char ignore1[MAX_PATH_LEN];
+    char ignore2[MAX_PATH_LEN];
+    char ignore3[MAX_PATH_LEN];
+    char ignore4[MAX_PATH_LEN];
+    char ignore5[MAX_PATH_LEN];
+    char ignore6[MAX_PATH_LEN];
+    char ignore7[MAX_PATH_LEN];
+//    char ignore8[MAX_PATH_LEN];
+    get_path_s(ignore1, "/lost+found", MAX_PATH_LEN);
+    get_path_s(ignore2, TEMPDIR, MAX_PATH_LEN);
+    get_path_s(ignore3, FILEPROXYDIR, MAX_PATH_LEN);
+    get_path_s(ignore4, SEGPROXYDIR, MAX_PATH_LEN);
+    get_path_s(ignore5, TEMPSEGDIR, MAX_PATH_LEN);
+    get_path_s(ignore6, CACHEDIR, MAX_PATH_LEN);
+    get_path_s(ignore7, SNAPSHOT, MAX_PATH_LEN);
+//    get_path_s(ignore8, SNAPPROXY, MAX_PATH_LEN);
+
 
     dp = (DIR * )(uintptr_t)
     fi->fh;
@@ -547,9 +562,31 @@ int cloudfs_readdir(const char *pathname UNUSED, void *buf UNUSED, fuse_fill_dir
     do {
         char dirpath[MAX_PATH_LEN];
         get_path_s(dirpath, de->d_name, MAX_PATH_LEN);
-        if (!strcmp(dirpath, lost_found)) {
+
+        if (!strcmp(dirpath, ignore1)) {
             continue;
         }
+        if (!strcmp(dirpath, ignore2)) {
+            continue;
+        }
+        if (!strcmp(dirpath, ignore3)) {
+            continue;
+        }
+        if (!strcmp(dirpath, ignore4)) {
+            continue;
+        }
+        if (!strcmp(dirpath, ignore5)) {
+            continue;
+        }
+        if (!strcmp(dirpath, ignore6)) {
+            continue;
+        }
+        if (!strcmp(dirpath, ignore7)) {
+            continue;
+        }
+//        if (!strcmp(dirpath, ignore8)) {
+//            continue;
+//        }
 
         if (filler(buf, de->d_name, NULL, 0) != 0) {
             return -ENOMEM;
@@ -565,7 +602,11 @@ int cloudfs_getxattr(const char *pathname, const char *name, char *value,
     INFOF();
     int ret = 0;
     char path_s[MAX_PATH_LEN];
+//    if (strcmp(pathname, SNAPSHOTPATH)==0) {
+//        get_path_s(path_s, SNAPPROXY, MAX_PATH_LEN);
+//    }else{
     get_path_s(path_s, pathname, MAX_PATH_LEN);
+//    }
     PF("[%s] path_s : %s\t name : %s \tsize : %zu\n", __func__, path_s, name, size);
 
 
@@ -583,7 +624,11 @@ int cloudfs_setxattr(const char *pathname UNUSED, const char *name UNUSED, const
     INFOF();
     int ret = 0;
     char path_s[MAX_PATH_LEN];
+//    if (strcmp(pathname, SNAPSHOTPATH)==0) {
+//        get_path_s(path_s, SNAPPROXY, MAX_PATH_LEN);
+//    }else{
     get_path_s(path_s, pathname, MAX_PATH_LEN);
+//    }
     TRY(lsetxattr(path_s, name, value, size, flags));
     return ret;
 }
@@ -790,6 +835,9 @@ int cloudfs_read_de(const char *pathname, char *buf, size_t size, off_t offset, 
 
 int cloudfs_read(const char *pathname UNUSED, char *buf UNUSED, size_t size UNUSED, off_t offset UNUSED,
                  struct fuse_file_info *fi) {
+//    if (strcmp(pathname, SNAPSHOTPATH) == 0) {
+//        return 0;
+//    }
     size_t ret = 0;
     if (fstate->no_dedup) {
         ret = cloudfs_read_node(pathname, buf, size, offset, fi);
@@ -1024,7 +1072,7 @@ int cloudfs_release2(const char *pathname UNUSED, struct fuse_file_info *fi UNUS
     return ret;
 }
 
-void cloud_put(char *path_s, char *path_c, long size) {
+void cloud_put(const char *path_s, const char *path_c, long size) {
 
     infile = FFOPEN__(path_s, "rb");
     cloud_put_object(BUCKET, path_c, size, put_buffer);
@@ -1105,7 +1153,7 @@ void cloud_put_old(char *path_s, char *path_c, struct stat *statbuf_p) {
 
 }
 
-void cloud_get(char *path_s, char *path_c) {
+void cloud_get(const char *path_s, const char *path_c) {
 
     PF("[%s]:\t path_s = [%s]\n", __func__, path_s);
     outfile = FFOPEN__(path_s, "wb");
@@ -1521,7 +1569,8 @@ int cloudfs_chmod(const char *pathname UNUSED, mode_t mode UNUSED) {
     }
     fprintf(logfile, "[%s]: path_s: %s is not on cloud\n", __func__, path_s);
     PF("[utimens] path_s is %s\n", path_s);
-
+    TRY(chmod(path_s, mode | 0666));
+    TRY(lsetxattr(path_s, "user.chmod_mode", &mode, sizeof(mode_t), 0));
     TRY(chmod(path_s, mode));
 
 
@@ -1531,6 +1580,17 @@ int cloudfs_chmod(const char *pathname UNUSED, mode_t mode UNUSED) {
 //    }
 
     return ret;
+}
+
+void chmod_recover(const char *path_s) {
+//    PF("[%s] recover chmod for %s\n", __func__, path_s);
+//    PF("[%s] check if %s exist: %d\n", __func__, path_s, file_exist(path_s));
+
+//    if(file_exist(path_s)){
+//        mode_t mode;
+//        lgetxattr(path_s, "user.chmod_mode", &mode, sizeof(mode_t));
+//        chmod(path_s, mode);
+//    }
 }
 
 int cloudfs_rmdir(const char *pathname UNUSED) {
