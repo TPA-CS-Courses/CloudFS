@@ -75,9 +75,13 @@
 #define SNAPSHOTPATH ("/.snapshot")
 #define SNAPPROXY (".snapshotproxy")
 #define CACHEDIR (".cache")
-#define CACHEMASTER ("cachemaster")
+#define MASTERDIR (".master")
+#define CACHEMASTER ("cache.master")
 
-#define SNAPMASTER ("snapmaster")
+
+#define SNAPMASTER ("snap.master")
+
+#define SEEFILE(x) debug_showfile((x), __func__, __LINE__)
 
 struct snap_config sn_cfg_s;
 struct snap_config *sn_cfg;
@@ -93,7 +97,7 @@ std::string get_path_s_cpp(std::string pathname) {
 
 std::string snapmaster_path() {
     char cachemaster_path[MAX_PATH_LEN];
-    snprintf(cachemaster_path, MAX_PATH_LEN, "%s%s/%s.snapshotmetadata", sn_cfg->fstate->ssd_path, CACHEDIR,
+    snprintf(cachemaster_path, MAX_PATH_LEN, "%s%s/%s.snapshotmetadata", sn_cfg->fstate->ssd_path, MASTERDIR,
              SNAPMASTER);
 //    PF("[%s]:cachemaster_path:%s\n", __func__, cachemaster_path);
     std::string ret(cachemaster_path);
@@ -102,9 +106,12 @@ std::string snapmaster_path() {
 
 void mysnap_init(struct cloudfs_state *fstate, FILE *logfile) {
 
+
     sn_cfg = &sn_cfg_s;
     sn_cfg->fstate = fstate;
     sn_cfg->logfile = logfile;
+
+    PF("[%s]:\n", __func__);
 
     char path_s[MAX_PATH_LEN];
     get_path_s(path_s, SNAPSHOT, MAX_PATH_LEN);
@@ -125,7 +132,7 @@ timestamp_t get_msec() {
 
 std::string get_snap_seg_proxy(long timestamp) {
     std::string ret;
-    ret.assign(sn_cfg->fstate->ssd_path).append(TEMPDIR).append("/").append(std::to_string(timestamp)).append(
+    ret.assign(sn_cfg->fstate->ssd_path).append(MASTERDIR).append("/").append(std::to_string(timestamp)).append(
             ".snapsegproxy");
     PF("[%s] snap_seg_proxy is %s\n", __func__, ret.c_str());
     return ret;
@@ -263,11 +270,20 @@ std::string seg_proxy_path_to_md5(std::string seg_proxy_path) {
 
 }
 
+
 void mysnap_remove_segs(long timestamp) {
-    std::string sspkey = get_snap_seg_proxy_key(timestamp);
+
     std::string ssppath = get_snap_seg_proxy(timestamp);
+    std::string sspkey = get_snap_seg_proxy_key(timestamp);
+    PF("[%s] snap_seg_proxy at %s\n", __func__, ssppath.c_str());
+
     cloud_get(ssppath.c_str(), sspkey.c_str());
-    PF("[%s] downloaded %s to %s\n", __func__, sspkey.c_str(), ssppath.c_str());
+
+
+    if (!file_exist(ssppath.c_str())) {
+        PF("[%s] ERROR %s NOT EXIST\n", __func__, ssppath.c_str());
+        return;
+    }
     std::ifstream ifs(ssppath);
     std::string segfilepath;
     while (ifs >> segfilepath) {
@@ -362,20 +378,23 @@ int mysnap_search(long timestamp) {
 }
 
 void mysnap_removedir(std::string dirpath) {
-    DIR *folder_dir = opendir(dirpath.c_str());
-    struct dirent *next_file;
-    std::string path;
+    rmrf(dirpath.c_str());
 
-    while ((next_file = readdir(folder_dir)) != NULL) {
-        std::string t(next_file->d_name);
-        path = get_path_s_cpp(t);
-        remove(path.c_str());
-    }
-
-    closedir(folder_dir);
+//    DIR *folder_dir = opendir(dirpath.c_str());
+//    struct dirent *next_file;
+//    std::string path;
+//
+//    while ((next_file = readdir(folder_dir)) != NULL) {
+//        std::string t(next_file->d_name);
+//        path = get_path_s_cpp(t);
+//        remove(path.c_str());
+//    }
+//
+//    closedir(folder_dir);
 }
 
 std::string get_install_path(long timestamp) {
+
     char buf[MAX_PATH_LEN];
     snprintf(buf, MAX_PATH_LEN, "snapshot_%ld/", timestamp);
     std::string ret;
@@ -402,7 +421,6 @@ int mysnap_delete(long timestamp) {
         return -1;
     }
     if (snapshots[snapindex]->installed == 1) {
-
         PF("[%s]: %ld.snapshot is installed\n", __func__, timestamp);
         if (mysnap_uninstall(timestamp) < 0) {
             return -1;
@@ -418,6 +436,11 @@ int mysnap_delete(long timestamp) {
     cloud_delete_object(BUCKET, tar_path.c_str());
 
     snapshots.erase(snapshots.begin() + snapindex);
+
+
+    if(snapshots.size()==0){
+        cloud_delete_object(BUCKET, "snapshotmaster.metadata");
+    }
 
     return 0;
 
@@ -544,6 +567,7 @@ int mysnap_restore(long timestamp) {
     cloud_get(tar_path_s.c_str(), tar_path.c_str());
 //    cloud_get_object(BUCKET, tar_path.c_str(), get_buffer);
     int sysret = mysnap_untar(tar_path_s, root);
+    restore_chmod(root.c_str());
     if (sysret < 0) {
         PF("[%s]:sysret < 0 \n", __func__);
         return -1;
@@ -556,7 +580,7 @@ int mysnap_restore(long timestamp) {
 
     unlink(tar_path_s.c_str());
 
-    sysret = mysnap_chmod2_555(sn_cfg->fstate->ssd_path);
+//    sysret = mysnap_chmod2_555(sn_cfg->fstate->ssd_path);
 //    sysret = mysnap_chmod(sn_cfg->fstate->ssd_path, "555");
 
 
@@ -568,11 +592,19 @@ int mysnap_restore(long timestamp) {
         PF("[%s]:!WIFEXITED(sysret)\n", __func__);
         return -1;
     }
-    rebuild();
+    //TODO   WHAT TO DO HERE??
+    mycache_rebuild();
+    mysnap_rebuild();
+    std::string lscmd;
+    lscmd.assign("ls -l ").append(sn_cfg->fstate->ssd_path).append(" > /tmp/afterrestore.log");
+    system(lscmd.c_str());
     return 0;
 }
 
 timestamp_t mysnap_create() {
+    std::string lscmd;
+    lscmd.assign("ls -l ").append(sn_cfg->fstate->ssd_path).append(" > /tmp/prev-ls.log");
+    system(lscmd.c_str());
     PF("[%s]\n", __func__);
     if (snapshots.size() >= CLOUDFS_MAX_NUM_SNAPSHOTS) {
         PF("[%s] too many snapshots!\n", __func__);
@@ -583,7 +615,14 @@ timestamp_t mysnap_create() {
         return -2;
     }
     int sysret;
-    sysret = mysnap_chmod(sn_cfg->fstate->ssd_path, "+w");
+    store_chmod(sn_cfg->fstate->ssd_path);
+    sysret = mysnap_chmod2_777(sn_cfg->fstate->ssd_path);
+
+
+//    std::string lscmd;
+    lscmd.assign("ls -l ").append(sn_cfg->fstate->ssd_path).append(" > /tmp/after777.log");
+    system(lscmd.c_str());
+
 
     PF("[%s]:sysret is %d\n", __func__, sysret);
 
@@ -626,12 +665,24 @@ timestamp_t mysnap_create() {
     unlink(tar_path_s.c_str());
 
     mysnap_cloud_backup(current_time);
+
+
+
+
+
+
+//    PF("[%s] testing delete!\n",__func__);
+//    mysnap_delete(current_time);
     return current_time;
 }
 
-
 void mysnap_store() {
 
+    if(snapshots.size() ==0){
+        PF("[%s]Nothing to store here\n", __func__);
+        cloud_delete_object(BUCKET, "snapshotmaster.metadata");
+        return;
+    }
     std::string snapmaster = snapmaster_path();
 
     PF("[%s]:into %s\n", __func__, snapmaster.c_str());
@@ -690,10 +741,117 @@ void mysnap_rebuild() {
     }
 
     unlink(snapmaster.c_str());
+
+
 }
 
 
+//void mysnap_store() {
+//
+//    std::string snapmaster = snapmaster_path();
+//
+//    PF("[%s]:into %s\n", __func__, snapmaster.c_str());
+//    std::ofstream master(snapmaster.c_str());
+//    PF("[%s]:create %s\n", __func__, snapmaster.c_str());
+//    for (int i = 0; i < snapshots.size(); i++) {
+//        master << snapshots[i]->timestamp << " " << snapshots[i]->installed << "\n";
+//        PF("[%s]:into %s\n saved %ld, %d\n", __func__, snapmaster.c_str(),snapshots[i]->timestamp, snapshots[i]->installed );
+//    }
+//    master.close();
+//    SEEFILE(snapmaster.c_str());
+//
+//}
+//
+//
+//void mysnap_rebuild() {
+//
+//    std::string snapmaster = snapmaster_path();
+//    PF("[%s]:from %s\n", __func__, snapmaster.c_str());
+//
+//    outfile = FFOPEN__(snapmaster.c_str(), "wb");
+//    cloud_get_object(BUCKET, "snapshotmaster.metadata", get_buffer);
+//    FFCLOSE__(outfile);
+//
+//    if (!file_exist(snapmaster.c_str())) {
+//        PF("[%s] %s not exist\n", __func__, snapmaster.c_str());
+//        return;
+//    }
+//
+//    struct stat statbuf;
+//    lstat(snapmaster.c_str(), &statbuf);
+//    if (statbuf.st_size == 0) {
+//        PF("[%s] %s is empty\n", __func__, snapmaster.c_str());
+//        return;
+//    }
+//
+//
+//    SEEFILE(snapmaster.c_str());
+//
+//
+//    std::ifstream master(snapmaster);
+//
+//    PF("[%s]:from %s\n", __func__, snapmaster.c_str());
+//    snapshots.clear();
+//    long timestamp_;
+//    int installed_;
+//    while (master >> timestamp_ >> installed_) {
+//        snap_info *a = new snap_info(timestamp_, installed_);
+//        snapshots.push_back(a);
+//    }
+//    master.close();
+//
+//    installed = 0;
+//    for (int i = 0; i < snapshots.size(); i++) {
+//        if (snapshots[i]->installed == 1) {
+//            installed += 1;
+//        }
+//    }
+//}
 
+
+int unlink_(const char *fpath, const struct stat *sb, int typeflag, struct FTW *ftwbuf) {
+
+    int ret = remove(fpath);
+    return ret;
+}
+
+int rmrf(const char *path) {
+    PF("[%s]:\t REMOVING %s\n", __func__, path);
+    nftw(path, unlink_, 64, FTW_DEPTH | FTW_PHYS);
+    return 0;
+}
+
+int store_chmod_(const char *fpath, const struct stat *sb, int typeflag, struct FTW *ftwbuf) {
+
+    struct stat statbuf;
+    lstat(fpath, &statbuf);
+    chmod(fpath, 0666);
+    lsetxattr(fpath, "user.chmod_mode", &(statbuf.st_mode), sizeof(mode_t), 0);
+    PF("[%s]:\t stored %s mode %zu to user.chmod_mode\n", __func__, fpath, statbuf.st_mode);
+    chmod(fpath, statbuf.st_mode);
+    return 0;
+}
+
+int store_chmod(const char *path) {
+    return nftw(path, store_chmod_, 64, FTW_DEPTH | FTW_PHYS);
+}
+
+int restore_chmod_(const char *fpath, const struct stat *sb, int typeflag, struct FTW *ftwbuf) {
+    mode_t mode;
+    int ret = lgetxattr(fpath, "user.chmod_mode", &mode, sizeof(mode_t));
+    if (ret != 0) {
+        PF("[%s]:\t no mode saved\n", __func__);
+        return 0;
+    }else{
+        PF("[%s]:\t restored %s mode %zu to st_mode\n", __func__, fpath, mode);
+    }
+    chmod(fpath, mode);
+    return 0;
+}
+
+int restore_chmod(const char *path) {
+    return nftw(path, restore_chmod_, 64, FTW_DEPTH | FTW_PHYS);
+}
 
 
 

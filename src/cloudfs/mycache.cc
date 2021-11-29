@@ -71,7 +71,8 @@
 #define SEGPROXYDIR (".segproxy")
 #define TEMPSEGDIR (".tempsegs")
 #define CACHEDIR (".cache")
-#define CACHEMASTER ("cachemaster")
+#define MASTERDIR (".master")
+#define CACHEMASTER ("cache.master")
 
 struct cache_config ca_cfg_s;
 struct cache_config *ca_cfg;
@@ -125,8 +126,17 @@ void get_cache_path(char *cache_path, const char *md5, int bufsize) {
 
 void get_cachemaster_path(char *cachemaster_path, int bufsize) {
 
-    snprintf(cachemaster_path, bufsize, "%s%s/%s", ca_cfg->fstate->ssd_path, CACHEDIR, CACHEMASTER);
+    snprintf(cachemaster_path, bufsize, "%s%s/%s", ca_cfg->fstate->ssd_path, MASTERDIR, CACHEMASTER);
 //    PF("[%s]:cachemaster_path:%s\n", __func__, cachemaster_path);
+}
+
+std::string cachemaster_path_() {
+    std::string ret;
+    ret.assign(ca_cfg->fstate->ssd_path).append(MASTERDIR).append("/").append(CACHEMASTER);
+    PF("[%s]RET is %s\n",__func__,ret.c_str());
+//    snprintf(cachemaster_path, bufsize, "%s%s/%s", ca_cfg->fstate->ssd_path, MASTERDIR, CACHEMASTER);
+//    PF("[%s]:cachemaster_path:%s\n", __func__, cachemaster_path);
+    return ret;
 }
 
 void cache_download(std::string key) {
@@ -154,48 +164,7 @@ void cache_upload(std::string key, long size) {
     cache_upload_c(key.c_str(), size);
 }
 
-void rebuild() {
 
-    total_size = 0;
-
-    head = new DLinkedNode();
-    tail = new DLinkedNode();
-    head->next = tail;
-    tail->prev = head;
-    char cachemaster[MAX_PATH_LEN];
-    get_cachemaster_path(cachemaster, MAX_PATH_LEN);
-
-
-    if (file_exist(cachemaster)) {
-        std::ifstream master(cachemaster);
-        std::string key;
-        size_t size;
-        int dirty;
-        while (master >> key >> size >> dirty) {
-            total_size += size;
-            DLinkedNode *node = new DLinkedNode(key, size, dirty);
-            node->next = head->next;
-            node->prev = head;
-            head->next->prev = node;
-            head->next = node;
-        }
-
-        master.close();
-    }
-
-}
-
-void store() {
-    DLinkedNode *n;
-
-    char cachemaster[MAX_PATH_LEN];
-    get_cachemaster_path(cachemaster, MAX_PATH_LEN);
-    std::ofstream master(cachemaster);
-    for (n = tail->prev; n != head; n = n->prev) {
-        master << n->key << " " << n->size << " " << n->dirty << "\n";
-    }
-    master.close();
-}
 
 
 void cache_upload(const char *key, long size) {
@@ -244,12 +213,12 @@ void mycache_init(FILE *logfile, struct cloudfs_state *fstate) {
 //    tail->prev = head;
 //    total_size = 0;
 
-    rebuild();
+    mycache_rebuild();
 //    cachemap = new std::unordered_map<std::string, DLinkedNode *>();
     std::string a = "";
 //    cachemap.insert(std::pair<std::string, DLinkedNode *>(a, head));
     PF("[%s]:\n", __func__);
-    store();
+    mycache_store();
 }
 
 void mycache_destroy() {
@@ -257,6 +226,8 @@ void mycache_destroy() {
     PF("[%s] \n", __func__);
 
 }
+
+
 
 
 int cloud_put_cache(char *key_c, size_t size) {
@@ -304,7 +275,7 @@ int cloud_put_cache(char *key_c, size_t size) {
         PF("[%s], returned\n", __func__, key.c_str(), size);
 
 
-        store();
+        mycache_store();
         return 1;
     }
 
@@ -356,7 +327,7 @@ int cloud_get_cache(char *key_c, size_t size) {
         FFCLOSE__(fp);
 
 
-        store();
+        mycache_store();
         return 1;
     }
 
@@ -390,7 +361,7 @@ void cloud_delete_cache(const char *key_c) {
 
     }
 
-    store();
+    mycache_store();
 }
 
 DLinkedNode *cache_find(std::string key) {
@@ -401,7 +372,7 @@ DLinkedNode *cache_find(std::string key) {
         }
     }
 
-    store();
+    mycache_store();
     return nullptr;
 }
 
@@ -410,7 +381,7 @@ DLinkedNode *cache_get(std::string key) {
     PF("[%s] key %s\n", __func__, key.c_str());
     DLinkedNode *n = cache_find(key);
     if (n == nullptr) {
-        store();
+        mycache_store();
         return nullptr;
     } else {
         DLinkedNode *node = n;
@@ -425,7 +396,7 @@ DLinkedNode *cache_get(char *key_c) {
 
     DLinkedNode *n = cache_find(key);
     if (n == nullptr) {
-        store();
+        mycache_store();
         return nullptr;
     } else {
         DLinkedNode *node = n;
@@ -450,7 +421,7 @@ void cache_evict(DLinkedNode *removed, bool upload) {
     remove(path_cache);
     delete removed;
 
-    store();
+    mycache_store();
 }
 
 
@@ -488,7 +459,7 @@ void cache_put(std::string key, size_t size, int dirty) {
             }
         }
         PF("[%s] put %s into cache\n", __func__, key.c_str());
-        store();
+        mycache_store();
     } else {
         PF("[%s] in cachemap\n");
         DLinkedNode *node = n;
@@ -512,7 +483,7 @@ void add_to_head(DLinkedNode *node) {
 
     head->next = node;
 
-    store();
+    mycache_store();
 
 }
 
@@ -525,7 +496,7 @@ void cut_node(DLinkedNode *node) {
 void move_to_head(DLinkedNode *node) {
     cut_node(node);
     add_to_head(node);
-    store();
+    mycache_store();
 }
 
 DLinkedNode *remove_tail() {
@@ -535,6 +506,65 @@ DLinkedNode *remove_tail() {
     return node;
 }
 
+
+
+void mycache_rebuild() {
+
+    total_size = 0;
+
+    head = new DLinkedNode();
+    tail = new DLinkedNode();
+    head->next = tail;
+    tail->prev = head;
+    std::string cachemaster_path = cachemaster_path_();
+//    char cachemaster_path[MAX_PATH_LEN];
+//    get_cachemaster_path(cachemaster_path, MAX_PATH_LEN);
+    PF("[%s]\n",__func__);
+
+
+    if (file_exist(cachemaster_path.c_str())) {
+        struct stat statbuf;
+        lstat(cachemaster_path.c_str(), &statbuf);
+        if(statbuf.st_size !=0){
+            std::ifstream master(cachemaster_path.c_str());
+            std::string key;
+            size_t size;
+            int dirty;
+            while (master >> key >> size >> dirty) {
+                total_size += size;
+                DLinkedNode *node = new DLinkedNode(key, size, dirty);
+                node->next = head->next;
+                node->prev = head;
+                head->next->prev = node;
+                head->next = node;
+            }
+            master.close();
+        }else{
+            PF("[%s]file is empty\n",__func__);
+        }
+
+    }else{
+        PF("[%s]file not exist\n",__func__);
+    }
+
+}
+
+void mycache_store() {
+    DLinkedNode *n;
+//    char cachemaster_path[MAX_PATH_LEN];
+    std::string cachemaster_path = cachemaster_path_();
+//    get_cachemaster_path(cachemaster_path, MAX_PATH_LEN);
+    PF("[%s]%d\n",__func__, __LINE__);
+    if(!file_exist(cachemaster_path.c_str())){
+        PF("[%s]%d not exist\n",__func__, __LINE__);
+        return;
+    }
+    std::ofstream master(cachemaster_path.c_str());
+    for (n = tail->prev; n != head; n = n->prev) {
+        master << n->key << " " << n->size << " " << n->dirty << "\n";
+    }
+    master.close();
+}
 
 
 

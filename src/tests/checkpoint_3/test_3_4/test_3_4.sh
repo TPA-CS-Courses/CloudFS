@@ -122,6 +122,7 @@ function execute_part3_tests()
 #
 process_args cloudfs --ssd-path $SSD_MNT_ --fuse-path $FUSE_MNT_ --threshold $THRESHOLD --avg-seg-size $AVGSEGSIZE
 
+
 #----
 # test setup
 rm -rf $TEMPDIR

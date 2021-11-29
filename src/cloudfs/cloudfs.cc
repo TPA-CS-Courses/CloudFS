@@ -86,7 +86,8 @@
 #define SNAPSHOTPATH ("/.snapshot")
 //#define SNAPPROXY (".snapshotproxy")
 #define CACHEDIR (".cache")
-#define CACHEMASTER ("cachemaster")
+#define MASTERDIR (".master")
+#define CACHEMASTER ("cache.master")
 
 
 static struct cloudfs_state state_;
@@ -200,11 +201,33 @@ void *cloudfs_init(struct fuse_conn_info *conn UNUSED) {
     snprintf(temp_dir_ssd, MAX_PATH_LEN, "%s%s", fstate->ssd_path, CACHEDIR);
     mkdir(temp_dir_ssd, S_IRWXU | S_IRWXG | S_IROTH | S_IXOTH);
 
+    snprintf(temp_dir_ssd, MAX_PATH_LEN, "%s%s", fstate->ssd_path, MASTERDIR);
+    mkdir(temp_dir_ssd, S_IRWXU | S_IRWXG | S_IROTH | S_IXOTH);
+
     mydedup_init(fstate->rabin_window_size, fstate->avg_seg_size, fstate->min_seg_size,
                  fstate->max_seg_size, logfile, fstate);
+
     mysnap_init(fstate, logfile);
 
 
+
+//    std::string cachemaster_path = cachemaster_path_();
+//
+//    std::ofstream master(cachemaster_path.c_str());
+//
+//
+//    master.close();
+//
+//
+//
+//    std::string snapmaster = snapmaster_path();
+//
+//    std::ofstream master2(snapmaster.c_str());
+//
+//    master2.close();
+
+
+    PF("[%s]%d\n",__func__, __LINE__);
 //    get_path_s(targetPath, SNAPPROXY, MAX_PATH_LEN);
 //    FILE *f = FFOPEN__(targetPath, "w");
 //    FFCLOSE__(f);
@@ -556,7 +579,7 @@ int cloudfs_readdir(const char *pathname UNUSED, void *buf UNUSED, fuse_fill_dir
     char ignore5[MAX_PATH_LEN];
     char ignore6[MAX_PATH_LEN];
     char ignore7[MAX_PATH_LEN];
-//    char ignore8[MAX_PATH_LEN];
+    char ignore8[MAX_PATH_LEN];
     get_path_s(ignore1, "/lost+found", MAX_PATH_LEN);
     get_path_s(ignore2, TEMPDIR, MAX_PATH_LEN);
     get_path_s(ignore3, FILEPROXYDIR, MAX_PATH_LEN);
@@ -564,7 +587,7 @@ int cloudfs_readdir(const char *pathname UNUSED, void *buf UNUSED, fuse_fill_dir
     get_path_s(ignore5, TEMPSEGDIR, MAX_PATH_LEN);
     get_path_s(ignore6, CACHEDIR, MAX_PATH_LEN);
     get_path_s(ignore7, SNAPSHOT, MAX_PATH_LEN);
-//    get_path_s(ignore8, SNAPPROXY, MAX_PATH_LEN);
+    get_path_s(ignore8, MASTERDIR, MAX_PATH_LEN);
 
 
     dp = (DIR * )(uintptr_t)
@@ -600,9 +623,9 @@ int cloudfs_readdir(const char *pathname UNUSED, void *buf UNUSED, fuse_fill_dir
         if (!strcmp(dirpath, ignore7)) {
             continue;
         }
-//        if (!strcmp(dirpath, ignore8)) {
-//            continue;
-//        }
+        if (!strcmp(dirpath, ignore8)) {
+            continue;
+        }
 
         if (filler(buf, de->d_name, NULL, 0) != 0) {
             return -ENOMEM;
@@ -1809,9 +1832,10 @@ int cloudfs_start(struct cloudfs_state *state,
 
 
     strftime(log_path, sizeof(log_path), "/tmp/cloudfs%Y-%m-%d-%H-%M.log", timeinfo);
-//    logfile = FFOPEN__("/tmp/cloudfs.log", "w");
-    logfile = fopen(log_path, "a");
+    logfile = fopen("/tmp/cloudfs.log", "w");
+//    logfile = fopen(log_path, "a");
     PF("\n\n\n\n\n\n\n\n\nRuntime is %s\n", ctime(&now));
+
 
     setvbuf(logfile, NULL, _IOLBF, 0);
     INFOF();

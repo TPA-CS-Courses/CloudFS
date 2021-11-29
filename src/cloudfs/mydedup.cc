@@ -124,9 +124,9 @@ void mydedup_init(int window_size, int avg_seg_size, int min_seg_size, int max_s
     de_cfg->logfile = logfile;
     de_cfg->fstate = fstate;
 
+    PF("[%s]:\n", __func__);
     mycache_init(logfile, fstate);
 
-    PF("[%s]:\n", __func__);
 }
 
 void mydedup_destroy() {

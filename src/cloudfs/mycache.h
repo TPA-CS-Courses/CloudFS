@@ -26,59 +26,77 @@ struct DLinkedNode {
 };
 
 
-void rebuild();
+int get_buffer_c(const char *buffer, int bufferLength) ;
 
-void store();
 
-int get_buffer_c(const char *buffer, int bufferLength);
+int put_buffer_c(char *buffer, int bufferLength) ;
 
-int put_buffer_c(char *buffer, int bufferLength);
 
 void get_cache_path(char *cache_path, const char *md5, int bufsize);
 
-void cache_download(std::string key);
+void get_cachemaster_path(char *cachemaster_path, int bufsize) ;
 
-void cache_download(const char *key);
+void cache_download(std::string key) ;
 
-void cache_download_c(const char *key);
+void cache_download(const char *key) ;
+
+void cache_download_c(const char *key) ;
 
 void cache_upload(std::string key, long size);
 
-void cache_upload(const char *key, long size);
-
-void cache_upload(DLinkedNode *node);
-
-void cache_upload_c(const char *key, long size);
 
 
-void mycache_init(FILE *logfile, struct cloudfs_state *fstate);
 
-void mycache_destroy();
+void cache_upload(const char *key, long size) ;
+
+void cache_upload(DLinkedNode *node) ;
+
+void cache_upload_c(const char *key, long size) ;
 
 
-int cloud_put_cache(char *key, size_t size);
+void mycache_init(FILE *logfile, struct cloudfs_state *fstate) ;
+
+void mycache_destroy() ;
+
+
+int cloud_put_cache(char *key_c, size_t size) ;
+
 
 int cloud_get_cache(char *key_c, size_t size);
 
-void cloud_delete_cache(const char *key_c);
+void cloud_delete_cache(const char *key_c) ;
 
-DLinkedNode *cache_get(std::string key);
+DLinkedNode *cache_find(std::string key) ;
 
-void cache_evict(DLinkedNode *removed, bool upload);
+DLinkedNode *cache_get(std::string key) ;
 
-//void cache_evict(std::string key);
+DLinkedNode *cache_get(char *key_c);
 
-void cache_put(std::string key, size_t size, int dirty);
+
+void cache_evict(DLinkedNode *removed, bool upload) ;
+
+
+void cache_put(std::string key, size_t size, int dirty) ;
 
 void add_to_head(DLinkedNode *node);
+void cut_node(DLinkedNode *node) ;
 
-void cut_node(DLinkedNode *node);
-
-void move_to_head(DLinkedNode *node);
+void move_to_head(DLinkedNode *node) ;
 
 DLinkedNode *remove_tail();
 
-DLinkedNode *cache_find(std::string key);
+
+
+
+
+std::string cachemaster_path_();
+
+
+
+
+void mycache_rebuild() ;
+
+void mycache_store() ;
 
 
 #endif //SRC_MYCACHE_H

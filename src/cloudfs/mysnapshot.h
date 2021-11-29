@@ -81,4 +81,17 @@ int _nftw_RO(const char *fpath, const struct stat *statbuf, int typeflag, struct
 int mysnap_chmod2_555(const char *path_c);
 
 
+int unlink_(const char *fpath, const struct stat *sb, int typeflag, struct FTW *ftwbuf);
+
+int rmrf(const char *path);
+
+
+int store_chmod_(const char *fpath, const struct stat *sb, int typeflag, struct FTW *ftwbuf) ;
+
+int store_chmod(const char *path) ;
+
+int restore_chmod_(const char *fpath, const struct stat *sb, int typeflag, struct FTW *ftwbuf) ;
+
+int restore_chmod(const char *path) ;
+
 #endif //SRC_MYSNAPSHOT_H
