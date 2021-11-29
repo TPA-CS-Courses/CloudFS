@@ -362,7 +362,7 @@ int cloud_get_cache(char *key_c, size_t size) {
 
 }
 
-void cloud_delete_cache(char *key_c) {
+void cloud_delete_cache(const char *key_c) {
     //    FILE *outfile;
     std::string key(key_c);
     PF("[%s] key %s\n", __func__, key.c_str());

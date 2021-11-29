@@ -277,25 +277,36 @@ int cloudfs_ioctl(const char *path, int cmd, void *arg,
 
         PF("[%s]cmd==CLOUDFS_SNAPSHOT_LIST\n",__func__);
         NOI();
+        mysnap_list((long*)data);
         return 0;
     } else if (cmd==CLOUDFS_INSTALL_SNAPSHOT) {
 
+
         PF("[%s]cmd==CLOUDFS_INSTALL_SNAPSHOT\n",__func__);
         NOI();
-        return 0;
+
+
+        int ret=mysnap_install(*(long*)data);
+        mysnap_store();
+        return ret;
     } else if (cmd==CLOUDFS_UNINSTALL_SNAPSHOT) {
 
-        PF("[%s]cmd==CLOUDFS_UNINSTALL_SNAPSHOT\n",__func__);
+        int ret=mysnap_uninstall(*(long*)data);
+
+        PF("[%s]cmd==CLOUDFS_INSTALL_SNAPSHOT\n",__func__);
         NOI();
-        return 0;
+        mysnap_store();
+        return ret;
     } else if (cmd==CLOUDFS_DELETE) {
+        int ret=mysnap_delete(*(long*)data);
 
         PF("[%s]cmd==CLOUDFS_DELETE\n",__func__);
         NOI();
-        return 0;
+        mysnap_store();
+        return ret;
     } else if (cmd==CLOUDFS_RESTORE) {
         PF("[%s]cmd==CLOUDFS_RESTORE\n",__func__);
-        NOI();
+//        NOI();
 
         int ret=mysnap_restore(*(long*)data);
         mysnap_store();
@@ -389,7 +400,7 @@ int cloudfs_getattr_(const char *pathname, struct stat *statbuf) {
     size_t size_f = statbuf->st_size;
 
     PF("[%s]:\tfile %s have size: %zu\n", __func__, pathname, size_f);
-
+    PF("[%s]:\tfile %s have mode: %zu\n", __func__, pathname, statbuf->st_mode);
     return ret;
 }
 
@@ -418,6 +429,7 @@ int cloudfs_getattr(const char *pathname, struct stat *statbuf) {
 
 int cloudfs_open(const char *pathname, struct fuse_file_info *fi) {
 
+
     PF("[%s]:\t pathname: %s\n", __func__, pathname);
     INFOF();
 //    int ret = 0;
@@ -426,39 +438,43 @@ int cloudfs_open(const char *pathname, struct fuse_file_info *fi) {
     char path_s[MAX_PATH_LEN];
 //    char path_c[MAX_PATH_LEN];
     get_path_s(path_s, pathname, MAX_PATH_LEN);
+    chmod_recover(path_s);
 
 //    get_path_c(path_c, path_s);
 
     if (is_on_cloud(path_s)) {
-        PF("[%s]:\t downloading from cloud\n", __func__, pathname);
-        char path_c[MAX_PATH_LEN];
-        char path_t[MAX_PATH_LEN];
-        get_path_c(path_c, path_s);
-        get_path_t(path_t, pathname, MAX_PATH_LEN);
-        cloud_get(path_t, path_c);
-        PF("[%s]:\t get statbuf of %s\n", __func__, path_t);
-        struct stat statbuf;
-        RUN_M(lstat(path_t, &statbuf));
+        if(fstate->no_dedup){
+            PF("[%s]:\t downloading from cloud\n", __func__, pathname);
+            char path_c[MAX_PATH_LEN];
+            char path_t[MAX_PATH_LEN];
+            get_path_c(path_c, path_s);
+            get_path_t(path_t, pathname, MAX_PATH_LEN);
+            cloud_get(path_t, path_c);
+            PF("[%s]:\t get statbuf of %s\n", __func__, path_t);
+            struct stat statbuf;
+            RUN_M(lstat(path_t, &statbuf));
 
-        size_t size_f = statbuf.st_size;
-        ino_t ino_f = statbuf.st_ino;
+            size_t size_f = statbuf.st_size;
+            ino_t ino_f = statbuf.st_ino;
 
-        PF("[%s]:\t opening %s with flag %d\n", __func__, path_t, fi->flags);
+            PF("[%s]:\t opening %s with flag %d, mode is %zu\n", __func__, path_t, fi->flags, statbuf.st_mode);
 
-        fd = open(path_t, O_RDWR);
+            fd = open(path_t, O_RDWR);
 
-        fi->fh = fd;
 
-        PF("[%s]:\t open returned %d\t file is %s \t size is %zu \t st_ino is %zu\n", __func__, fd, path_t, size_f,
-           ino_f);
-        if (fd < 0) {
-            return cloudfs_error(__func__);
+            fi->fh = fd;
+
+            PF("[%s]:\t open returned %d\t file is %s \t size is %zu \t st_ino is %zu\n", __func__, fd, path_t, size_f,
+               ino_f);
+            if (fd < 0) {
+                return cloudfs_error(__func__);
+            }
+
+            return 0;
         }
-
-        return 0;
     } else {
         PF("[%s]:\t opening %s\n", __func__, path_s);
-        chmod_recover(path_s);
+
         fd = open(path_s, fi->flags);
         if (fd < 0) {
             return cloudfs_error(__func__);
@@ -874,168 +890,183 @@ int cloudfs_write_node(const char *pathname UNUSED, const char *buf UNUSED, size
     return ret;
 }
 
-
-int cloudfs_write_de(const char *pathname UNUSED, const char *buf UNUSED, size_t size UNUSED, off_t offset UNUSED,
-                     struct fuse_file_info *fi) {
-    PF("[%s]:\t pathname: %s\t offset: %zu\n", __func__, pathname, offset);
-    int ret = 0;
-
-//    char path_s[MAX_PATH_LEN];
-//    get_path_s(path_s, pathname, MAX_PATH_LEN);
-//    int loc = ON_SSD;
-//    RUN_M(get_loc(path_s, &loc));
-//    if (loc == ON_CLOUD) {
 //
-////        NOI();
-////        FILE *fp_fileproxy = FFOPEN__(path_s, "r");
-//        seg_info_p segs[MAX_SEG_AMOUNT];
-//        int num_seg = 0;
-//        num_seg = mydedup_readsegs_from_proxy(path_s, segs);
+//int cloudfs_write_de(const char *pathname UNUSED, const char *buf UNUSED, size_t size UNUSED, off_t offset UNUSED,
+//                     struct fuse_file_info *fi) {
+//    PF("[%s]:\t pathname: %s\t offset: %zu\n", __func__, pathname, offset);
+//    int ret = 0;
 //
-//        PF("[%s] returned from mydedup_readsegs_from_proxy, read %d segs\n", __func__, num_seg);
-//        long seg_offset = 0;
-//        for (int i = 0; i < num_seg; i++) {
-//            if (i > MAX_SEG_AMOUNT) {
-//                PF("[%s] ERROR i %d > MAX_SEG_AMOUNT\n", __func__, i);
-//            }
-////            PF("i = %d\n", i);
-////            PF("[%s]: read seg[%d]: md5:%s, size:%ld, offset:%ld\n", __func__, i, segs[i]->md5, segs[i]->seg_size,
-////               seg_offset);
-//            seg_offset += segs[i]->seg_size;
-//        }
-//
-//        long file_size = seg_offset;
-//        long write_start = offset;
-//        long write_end = size + offset;
-//        if (size == 0) {
-//            PF("[%s]:WHY WRITE 0 BYTE?\n", __func__);
-//            return 0;
-//        }
-//
-//        PF("[%s]:offset is %ld, file_size is %ld\n", __func__, offset, file_size);
-//
-//        int start = 0;
-//        int end = 0;
-//
-//
-//        if (offset >= file_size) {
-//            PF("[%s]:offset >= file_size\n", __func__);
-//
-//            start = num_seg;//means write append to the end!
-//
-//            char temp_file_path[MAX_PATH_LEN];
-//
-//            get_tempfile_path_dedup(temp_file_path, path_s, MAX_PATH_LEN);
-//
-//
-//            PF("[%s]:temp_file_path is %s\n", __func__, temp_file_path);
-////            FILE *fp2 = FFOPEN__(temp_file_path, "w");
+////    char path_s[MAX_PATH_LEN];
+////    get_path_s(path_s, pathname, MAX_PATH_LEN);
+////    int loc = ON_SSD;
+////    RUN_M(get_loc(path_s, &loc));
+////    if (loc == ON_CLOUD) {
 ////
-////            FFCLOSE__(fp2);
-//
-//            seg_down(temp_file_path, segs[num_seg - 1]->md5);
-//
-//            mydedup_remove_seg(segs[num_seg - 1]->md5);
-//
-//
+//////        NOI();
+//////        FILE *fp_fileproxy = FFOPEN__(path_s, "r");
+////        seg_info_p segs[MAX_SEG_AMOUNT];
+////        int num_seg = 0;
+////        num_seg = mydedup_readsegs_from_proxy(path_s, segs);
 ////
-////            PF("[%s]:%d\n",__func__,__LINE__);
-//
-//            int fd = open(temp_file_path, O_RDWR);
-//
-//            PF("[%s]:pwrite at %s\n", __func__, temp_file_path);
-//            struct stat statbuf;
-//            lstat(path_s, &statbuf);
-//            size_t size_1 = statbuf.st_size;
-////            SEEFILE(temp_file_path);
-//            TRY(pwrite(fd, buf, size, segs[num_seg - 1]->seg_size));
-//            lstat(path_s, &statbuf);
-//            size_t size_2 = statbuf.st_size;
-//
-//            PF("[%s]: size before is %zu\t size after is %zu\n", __func__, size_1, size_2);
-//
-//            close(fd);
-//
-////            SEEFILE(temp_file_path);
-//            mydedup_uploadfile_append(temp_file_path, path_s, segs, num_seg);
-//
-//        } else {
-//
-//            PF("[%s]:offset < file_size\n", __func__);
-//            NOI();
-//            seg_offset = 0;
-//            for (int i = 0; i < num_seg; i++) {
-//                if (offset >= seg_offset && offset < seg_offset + segs[i]->seg_size) {
-//                    start = i;
-//                }
-//
-//            }
-//        }
-//
-//
-//        PF("[%s]: writing %ld to %ld\n", __func__, offset, write_end);
-//
-////        int first_seg =
-//
-//
-//
-//
-//        RUN_M(set_dirty(path_s, DIRTY));
-//
-//
-//        for (int i = 0; i < num_seg; i++) {
-////            PF("i = %d\n", i);
-////            PF("[%s]: read seg[%d]: md5:%s, size:%ld, offset:%ld\n", __func__, i, segs[i]->md5, segs[i]->seg_size,
-////               seg_offset);
-//            free(segs[i]);
-//        }
-//        return size;
-//    } else {
-//        PF("[%s]:\t pathname: %s\t is on ssd\n", __func__, pathname);
-//        if (offset + size > fstate->threshold) {
-//
+////        PF("[%s] returned from mydedup_readsegs_from_proxy, read %d segs\n", __func__, num_seg);
+////        long seg_offset = 0;
+////        for (int i = 0; i < num_seg; i++) {
+////            if (i > MAX_SEG_AMOUNT) {
+////                PF("[%s] ERROR i %d > MAX_SEG_AMOUNT\n", __func__, i);
+////            }
+//////            PF("i = %d\n", i);
+//////            PF("[%s]: read seg[%d]: md5:%s, size:%ld, offset:%ld\n", __func__, i, segs[i]->md5, segs[i]->seg_size,
+//////               seg_offset);
+////            seg_offset += segs[i]->seg_size;
+////        }
+////
+////        long file_size = seg_offset;
+////        long write_start = offset;
+////        long write_end = size + offset;
+////        if (size == 0) {
+////            PF("[%s]:WHY WRITE 0 BYTE?\n", __func__);
+////            return 0;
+////        }
+////
+////        PF("[%s]:offset is %ld, file_size is %ld\n", __func__, offset, file_size);
+////
+////        int start = 0;
+////        int end = 0;
+////
+////
+////        if (offset >= file_size) {
+////            PF("[%s]:offset >= file_size\n", __func__);
+////
+////            start = num_seg;//means write append to the end!
+////
+////            char temp_file_path[MAX_PATH_LEN];
+////
+////            get_tempfile_path_dedup(temp_file_path, path_s, MAX_PATH_LEN);
+////
+////
+////            PF("[%s]:temp_file_path is %s\n", __func__, temp_file_path);
+//////            FILE *fp2 = FFOPEN__(temp_file_path, "w");
+//////
+//////            FFCLOSE__(fp2);
+////
+////            seg_down(temp_file_path, segs[num_seg - 1]->md5);
+////
+////            mydedup_remove_seg(segs[num_seg - 1]->md5);
+////
+////
+//////
+//////            PF("[%s]:%d\n",__func__,__LINE__);
+////
+////            int fd = open(temp_file_path, O_RDWR);
+////
+////            PF("[%s]:pwrite at %s\n", __func__, temp_file_path);
+////            struct stat statbuf;
+////            lstat(path_s, &statbuf);
+////            size_t size_1 = statbuf.st_size;
+//////            SEEFILE(temp_file_path);
+////            TRY(pwrite(fd, buf, size, segs[num_seg - 1]->seg_size));
+////            lstat(path_s, &statbuf);
+////            size_t size_2 = statbuf.st_size;
+////
+////            PF("[%s]: size before is %zu\t size after is %zu\n", __func__, size_1, size_2);
+////
+////            close(fd);
+////
+//////            SEEFILE(temp_file_path);
+////            mydedup_uploadfile_append(temp_file_path, path_s, segs, num_seg);
+////
+////        } else {
+////
+////            PF("[%s]:offset < file_size\n", __func__);
 ////            NOI();
-//            PF("[%s]:\t offset: %zu > fstate->threshold %d\n", __func__, offset, fstate->threshold);
-//            TRY(pwrite(fi->fh, buf, size, offset));
-//
-//            PF("[%s]:\t pathname: %s\n", __func__, pathname);
-//
-//
-//            close(fi->fh);//finish this write first
-//            set_loc(path_s, ON_CLOUD);
-//            // in dedup mode ON_CLOUD means FIFH IS CLOSED!
-//
-//            //
-//
-//
-//
-////            seg_info_p segs[MAX_SEG_AMOUNT];
-////            int num_seg = 0;
-////            mydedup_segmentation(path_s, &num_seg, segs);
-//            mydedup_uploadfile(path_s);
-//
-//            PF("[%s]:\t RETURNED %d, size = %zu\n", __func__, ret, size);
-//            return ret;
-//
-//        } else {
-//            PF("[%s]:\t offset: %zu <= fstate->threshold %d\n", __func__, offset, fstate->threshold);
-//
-//            TRY(pwrite(fi->fh, buf, size, offset));
-//
-//            PF("[%s]:\t pathname: %s\n", __func__, pathname);
-//
-//
-//            PF("[%s]:\t RETURNED %d, size = %zu\n", __func__, ret, size);
-//            return ret;
-//        }
-//    }
-//
-//    return ret;
-}
+////            seg_offset = 0;
+////            for (int i = 0; i < num_seg; i++) {
+////                if (offset >= seg_offset && offset < seg_offset + segs[i]->seg_size) {
+////                    start = i;
+////                }
+////
+////            }
+////        }
+////
+////
+////        PF("[%s]: writing %ld to %ld\n", __func__, offset, write_end);
+////
+//////        int first_seg =
+////
+////
+////
+////
+////        RUN_M(set_dirty(path_s, DIRTY));
+////
+////
+////        for (int i = 0; i < num_seg; i++) {
+//////            PF("i = %d\n", i);
+//////            PF("[%s]: read seg[%d]: md5:%s, size:%ld, offset:%ld\n", __func__, i, segs[i]->md5, segs[i]->seg_size,
+//////               seg_offset);
+////            free(segs[i]);
+////        }
+////        return size;
+////    } else {
+////        PF("[%s]:\t pathname: %s\t is on ssd\n", __func__, pathname);
+////        if (offset + size > fstate->threshold) {
+////
+//////            NOI();
+////            PF("[%s]:\t offset: %zu > fstate->threshold %d\n", __func__, offset, fstate->threshold);
+////            TRY(pwrite(fi->fh, buf, size, offset));
+////
+////            PF("[%s]:\t pathname: %s\n", __func__, pathname);
+////
+////
+////            close(fi->fh);//finish this write first
+////            set_loc(path_s, ON_CLOUD);
+////            // in dedup mode ON_CLOUD means FIFH IS CLOSED!
+////
+////            //
+////
+////
+////
+//////            seg_info_p segs[MAX_SEG_AMOUNT];
+//////            int num_seg = 0;
+//////            mydedup_segmentation(path_s, &num_seg, segs);
+////            mydedup_uploadfile(path_s);
+////
+////            PF("[%s]:\t RETURNED %d, size = %zu\n", __func__, ret, size);
+////            return ret;
+////
+////        } else {
+////            PF("[%s]:\t offset: %zu <= fstate->threshold %d\n", __func__, offset, fstate->threshold);
+////
+////            TRY(pwrite(fi->fh, buf, size, offset));
+////
+////            PF("[%s]:\t pathname: %s\n", __func__, pathname);
+////
+////
+////            PF("[%s]:\t RETURNED %d, size = %zu\n", __func__, ret, size);
+////            return ret;
+////        }
+////    }
+////
+////    return ret;
+//}
 
 
 int cloudfs_write(const char *pathname UNUSED, const char *buf UNUSED, size_t size UNUSED, off_t offset UNUSED,
                   struct fuse_file_info *fi) {
+    char path_s[MAX_PATH_LEN];
+    get_path_s(path_s, pathname, MAX_PATH_LEN);
+    chmod_recover(path_s);
+
+    struct stat statbuf;
+    lstat(path_s, &statbuf);
+
+
+    PF("[%s]:\t mode is %zu\n", __func__, statbuf.st_mode);
+    int ret2 = access(path_s, W_OK);
+    PF("[%s]:\t access ret is %d\n", __func__, ret2);
+
+    if(ret2!=0){
+        return -errno;
+    }
     int ret = 0;
     if (fstate->no_dedup) {
         ret = cloudfs_write_node(pathname, buf, size, offset, fi);
@@ -1369,142 +1400,6 @@ int cloudfs_release_de(const char *pathname UNUSED, struct fuse_file_info *fi UN
     PF("[%s]:\t pathname: %s\n", __func__, pathname);
     INFOF();
 
-//    char path_s[MAX_PATH_LEN];
-//    get_path_s(path_s, pathname, MAX_PATH_LEN);
-//
-//    PF("[%s]:\t pathname = %s \t path_s = %s \n", __func__, pathname, path_s);
-////    size_t size_f = 0;
-//
-//    int loc = ON_SSD;
-//    PF("[%s]:\t getting loc\n", __func__);
-//    RUN_M(get_loc(path_s, &loc));
-//
-//
-//    if (loc == ON_SSD) {
-//        if (close(fi->fh) < 0) {// in dedup fi->fh is closed as long as is on cloud
-//            return cloudfs_error("release failed");
-//        }
-//        PF("[%s]:\t file %s is ON_SSD\n", __func__, pathname);
-//        int dirty = N_DIRTY;
-//        RUN_M(get_dirty(path_s, &dirty));
-//        if (dirty) {//file is dirty
-//
-//            PF("[%s]:\t loc on ssd and dirty??  This should never happen!!!!!!\n", __func__);
-//
-//            PF("[%s]:\t file %s is dirty\n", __func__, pathname);
-//
-//        } else {//not dirty
-//
-//            PF("[%s]:\t file %s not dirty\n", __func__, pathname);
-//            struct stat statbuf;
-//            RUN_M(lstat(path_s, &statbuf));
-//
-//            size_t size_f = statbuf.st_size;
-//            PF("[%s]:\t file %s size: %zu\n", __func__, pathname, size_f);
-//            if (size_f > fstate->threshold) {//larger than threshold, need to move to cloud
-//                //unlikely to happen
-//                // may happen if offset < threshold but offset+size > threshold
-//                mydedup_uploadfile(path_s);// this is probably enough but we need to see.
-//                NOI(); // Mark as not implemented
-//                PF("[%s]:\t clean file %s need to be put on cloud\n", __func__, pathname);
-//
-//
-//            } else {//remain on ssd
-//                PF("[%s]:\t clean file %s put on ssd\n", __func__, pathname);
-//                PF("[line: %d]:\t", __LINE__);
-//                set_loc(path_s, ON_SSD);
-//                set_dirty(path_s, N_DIRTY);
-//            }
-//
-//        }
-//
-//    } else if (loc == ON_CLOUD) {
-//        //I dont think dirty is important anymore because we upload each time we write
-////        NOI();
-//        PF("[%s]:\t file %s is ON_CLOUD\n", __func__, pathname);
-//        struct stat statbuf;
-//        RUN_M(get_from_proxy(path_s, &statbuf));
-//
-//        size_t size_f = statbuf.st_size;
-//        if (size_f <= fstate->threshold) {
-//
-////            NOI();
-//
-//            PF("[%s]: Need to move file from cloud to ssd to %s", __func__, path_s);
-//            seg_info_p segs[MAX_SEG_AMOUNT];
-//            int num_seg;
-//            num_seg = mydedup_readsegs_from_proxy(path_s, segs);
-//
-//            PF("[%s] returned from mydedup_readsegs_from_proxy, read %d segs\n", __func__, num_seg);
-//            long seg_offset = 0;
-//            for (int i = 0; i < num_seg; i++) {
-//                if (i > MAX_SEG_AMOUNT) {
-//                    PF("[%s] ERROR i %d > MAX_SEG_AMOUNT\n", __func__, i);
-//                }
-////            PF("i = %d\n", i);
-////            PF("[%s]: read seg[%d]: md5:%s, size:%ld, offset:%ld\n", __func__, i, segs[i]->md5, segs[i]->seg_size,
-////               seg_offset);
-//                seg_offset += segs[i]->seg_size;
-//            }
-//            PF("[%s] seg_offset = %ld and statbuf.st_size = %zu\n", __func__, seg_offset, size_f);
-////            mydedup_down_segs(path_s, segs, 0, num_seg - 1);
-//
-//        } else {//remain on cloud
-//            NOI();
-//            //dunno what to do here TBH
-//            PF("[%s]: %s remain on cloud", __func__, path_s);
-//        }
-//
-////        int dirty = N_DIRTY;
-////
-////        RUN_M(get_dirty(path_s, &dirty));
-////        if (dirty) {//file is dirty
-////            PF("[%s]:\t file %s is dirty\n", __func__, pathname);
-////
-////            struct stat statbuf;
-////            RUN_M(lstat(path_t, &statbuf));
-////
-////            size_t size_f = statbuf.st_size;
-////            PF("[%s]: temp file size is %zu\n", __func__, size_f);
-////            if (size_f <= fstate->threshold) {//smaller than threshold, need to move back to ssd
-////                NOI();
-//////                    cloud_delete_object(BUCKET, path_c);
-//////
-//////                    PF("[%s]: move file from cloud to ssd at %s. key:[%s]", __func__, path_s, path_c);
-//////                    PF("[%s]: rename %s to %s. key:[%s]", __func__, path_t, path_s, path_c);
-//////
-//////                    RUN_M(rename(path_t, path_s));
-//////                    set_loc(path_s, ON_SSD);
-//////                    set_dirty(path_s, N_DIRTY);
-////
-////            } else {//remain on cloud
-////                NOI();
-//////                    cloud_delete_object(BUCKET, path_c);
-//////                    cloud_put(path_t, path_c, statbuf.st_size);
-//////
-//////                    PF("[%s]: uploading %s to cloud to replace old file. key:[%s]", __func__, path_t, path_c);
-//////
-//////                    set_loc(path_s, ON_CLOUD);
-//////                    set_dirty(path_s, N_DIRTY);
-//////                    RUN_M(clone_2_proxy(path_s, &statbuf));
-////            }
-////        } else {//not dirty
-////
-////            PF("[%s]:\t clean file %s stay on cloud\n", __func__, pathname);
-////            NOI();
-////
-////
-////////            struct stat statbuf;
-////////            RUN_M(lstat(path_s, &statbuf));
-//////
-//////                RUN_M(remove(path_t));
-//////                set_loc(path_s, ON_CLOUD);
-//////                set_dirty(path_s, N_DIRTY);
-////        }
-//    } else {
-//        return cloudfs_error("release failed");
-//    }
-
 }
 
 int cloudfs_release(const char *pathname UNUSED, struct fuse_file_info *fi UNUSED) {
@@ -1521,16 +1416,22 @@ int cloudfs_release(const char *pathname UNUSED, struct fuse_file_info *fi UNUSE
 
 int cloudfs_access(const char *pathname UNUSED, int mask UNUSED) {
 
-    PF("[%s]:\t pathname: %s\n", __func__, pathname);
+    PF("[%s]:\t pathname: %s, %d\n", __func__, pathname, mask);
 //    INFOF();
     int ret = 0;
     char path_s[MAX_PATH_LEN];
     get_path_s(path_s, pathname, MAX_PATH_LEN);
+
+
     TRY(access(path_s, mask));
+
+
+    PF("[%s]:\t ret is %d\n", __func__, ret);
 //    ret = access(path_s, mask);
 //    if (ret < 0) {
 //        return cloudfs_error("access failed");
 //    }
+
     return ret;
 }
 
@@ -1585,12 +1486,17 @@ int cloudfs_chmod(const char *pathname UNUSED, mode_t mode UNUSED) {
 void chmod_recover(const char *path_s) {
 //    PF("[%s] recover chmod for %s\n", __func__, path_s);
 //    PF("[%s] check if %s exist: %d\n", __func__, path_s, file_exist(path_s));
-
-//    if(file_exist(path_s)){
-//        mode_t mode;
-//        lgetxattr(path_s, "user.chmod_mode", &mode, sizeof(mode_t));
-//        chmod(path_s, mode);
-//    }
+//
+    if(file_exist(path_s)){
+        mode_t mode;
+        int ret = lgetxattr(path_s, "user.chmod_mode", &mode, sizeof(mode_t));
+        if(ret !=0){
+            PF("[%s]:\t no mode saved\n", __func__);
+            return;
+        }
+        PF("[%s]:\t mode_t is: %zu\n", __func__, mode);
+        chmod(path_s, mode);
+    }
 }
 
 int cloudfs_rmdir(const char *pathname UNUSED) {

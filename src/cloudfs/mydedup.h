@@ -22,6 +22,8 @@ typedef struct seg_info {
     char md5[MD5_DIGEST_LENGTH * 2 + 1];
 } seg_info_t, *seg_info_p;
 
+
+
 void debug_showfile(const char *file, const char *functionname, int line);
 
 FILE *ffopen_(const char *func, const char *filename, const char *mode);

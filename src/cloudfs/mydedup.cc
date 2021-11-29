@@ -438,6 +438,8 @@ void mydedup_get_seginfo(const char *path_s, std::vector <seg_info_p> &segs) {
 
 int mydedup_write(const char *pathname UNUSED, const char *buf UNUSED, size_t size UNUSED, off_t offset UNUSED,
                   struct fuse_file_info *fi) {
+
+    PF("[%s]:\t pathname: %s\t offset: %zu\n", __func__, pathname, offset);
     PF("[%s]:\t pathname: %s\t offset: %zu\n", __func__, pathname, offset);
     int ret = 0;
     char path_s[MAX_PATH_LEN];

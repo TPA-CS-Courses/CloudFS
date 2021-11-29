@@ -60,7 +60,7 @@ int cloud_put_cache(char *key, size_t size);
 
 int cloud_get_cache(char *key_c, size_t size);
 
-void cloud_delete_cache(char *key_c);
+void cloud_delete_cache(const char *key_c);
 
 DLinkedNode *cache_get(std::string key);
 
