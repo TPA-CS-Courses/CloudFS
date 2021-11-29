@@ -35,7 +35,7 @@
 #define BUF_SIZE (1024)
 
 
-#define SHOWPF
+//#define SHOWPF
 
 #define UNUSED __attribute__((unused))
 
@@ -459,6 +459,7 @@ int mydedup_write(const char *pathname UNUSED, const char *buf UNUSED, size_t si
             PF("[%s] uploading %s", __func__, path_s);
             mydedup_upload_file(path_s);
             clone_2_proxy(path_s, &statbuf);
+
             set_loc(path_s, ON_CLOUD);
         }
     } else {
@@ -480,31 +481,31 @@ int mydedup_write(const char *pathname UNUSED, const char *buf UNUSED, size_t si
             if (upperbound < offset) {
                 oldseg1.push_back(segs[i]);
                 offset_change = upperbound;
-                PF("[%s]:\t oldseg1.push_back(%s);\n", __func__, segs[i]->md5);
+//                PF("[%s]:\t oldseg1.push_back(%s);\n", __func__, segs[i]->md5);
             } else if (lowerbound >= offset + size) {
                 if (after > 0) {//N+2 SCHEME
                     related_segs.push_back(segs[i]);
 
-                    PF("[%s]:\t related_segs.push_back(%s);\n", __func__, segs[i]->md5);
+//                    PF("[%s]:\t related_segs.push_back(%s);\n", __func__, segs[i]->md5);
                     after--;
                 } else {
                     oldseg2.push_back(segs[i]);
-                    PF("[%s]:\t oldseg2.push_back(%s);\n", __func__, segs[i]->md5);
+//                    PF("[%s]:\t oldseg2.push_back(%s);\n", __func__, segs[i]->md5);
                 }
             } else {
                 if (prev > 0) {
                     if (offset_change > 0) {
                         related_segs.push_back(oldseg1[oldseg1.size() - 1]);
 
-                        PF("[%s]:\t related_segs.push_back(%s);\n", __func__, oldseg1[oldseg1.size() - 1]->md5);
-                        PF("[%s]:\t oldseg1.pop_back(%s);\n", __func__, oldseg1[oldseg1.size() - 1]->md5);
+//                        PF("[%s]:\t related_segs.push_back(%s);\n", __func__, oldseg1[oldseg1.size() - 1]->md5);
+//                        PF("[%s]:\t oldseg1.pop_back(%s);\n", __func__, oldseg1[oldseg1.size() - 1]->md5);
                         offset_change -= oldseg1[oldseg1.size() - 1]->seg_size;
                         oldseg1.pop_back();
                     }
                     prev--;
                 }
                 related_segs.push_back(segs[i]);
-                PF("[%s]:\t related_segs.push_back(%s);\n", __func__, segs[i]->md5);
+//                PF("[%s]:\t related_segs.push_back(%s);\n", __func__, segs[i]->md5);
             }
         }
 
@@ -660,7 +661,7 @@ void mydedup_remove_one_seg(char *md5) {
 
     if (ref > 1) {
         set_ref(seg_proxy_path, ref - 1);
-        PF("[%s]: set ref of %s as ref-1 = %d\n", __func__, seg_proxy_path, ref - 1);
+//        PF("[%s]: set ref of %s as ref-1 = %d\n", __func__, seg_proxy_path, ref - 1);
     } else if (ref == 1) {
         cloud_delete_cache(md5);
 //        cloud_delete_object(BUCKET, md5);
@@ -793,7 +794,7 @@ int mydedup_truncate(const char *pathname UNUSED, off_t newsize UNUSED) {
                     }
                 } else {
                     related_segs.push_back(segs[i]);
-                    PF("[%s]:\t related_segs.push_back(%s);\n", __func__, segs[i]->md5);
+//                    PF("[%s]:\t related_segs.push_back(%s);\n", __func__, segs[i]->md5);
                 }
             }
 

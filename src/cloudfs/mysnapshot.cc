@@ -37,7 +37,7 @@
 #include "snapshot-api.h"
 
 #define BUF_SIZE (1024)
-#define SHOWPF
+//#define SHOWPF
 
 #define UNUSED __attribute__((unused))
 
@@ -297,6 +297,7 @@ void mysnap_remove_segs(long timestamp) {
         if (ref > 1) {
             set_ref(segfilepath.c_str(), ref - 1);
             PF("[%s]: set ref of %s as ref-1 = %d\n", __func__, segfilepath.c_str(), ref - 1);
+//            PF("[%s]: key is %s for %s \n", __func__, seg_proxy_path_to_md5(segfilepath).c_str(), segfilepath.c_str());
         } else if (ref == 1) {
             cloud_delete_cache(seg_proxy_path_to_md5(segfilepath).c_str());
 //        cloud_delete_object(BUCKET, md5);
@@ -535,6 +536,9 @@ int mysnap_install(long timestamp) {
 }
 
 int mysnap_restore(long timestamp) {
+//    PF("[%s] testing delete!\n",__func__);
+//    mysnap_delete(timestamp);
+
     if (installed > 0) {
         PF("[%s] You have snapshot installed!\n", __func__);
         return -1;
@@ -567,7 +571,7 @@ int mysnap_restore(long timestamp) {
     cloud_get(tar_path_s.c_str(), tar_path.c_str());
 //    cloud_get_object(BUCKET, tar_path.c_str(), get_buffer);
     int sysret = mysnap_untar(tar_path_s, root);
-    restore_chmod(root.c_str());
+//    restore_chmod(root.c_str());
     if (sysret < 0) {
         PF("[%s]:sysret < 0 \n", __func__);
         return -1;
@@ -595,16 +599,16 @@ int mysnap_restore(long timestamp) {
     //TODO   WHAT TO DO HERE??
     mycache_rebuild();
     mysnap_rebuild();
-    std::string lscmd;
-    lscmd.assign("ls -l ").append(sn_cfg->fstate->ssd_path).append(" > /tmp/afterrestore.log");
-    system(lscmd.c_str());
+//    std::string lscmd;
+//    lscmd.assign("ls -l ").append(sn_cfg->fstate->ssd_path).append(" > /tmp/afterrestore.log");
+//    system(lscmd.c_str());
     return 0;
 }
 
 timestamp_t mysnap_create() {
-    std::string lscmd;
-    lscmd.assign("ls -l ").append(sn_cfg->fstate->ssd_path).append(" > /tmp/prev-ls.log");
-    system(lscmd.c_str());
+//    std::string lscmd;
+//    lscmd.assign("ls -l ").append(sn_cfg->fstate->ssd_path).append(" > /tmp/prev-ls.log");
+//    system(lscmd.c_str());
     PF("[%s]\n", __func__);
     if (snapshots.size() >= CLOUDFS_MAX_NUM_SNAPSHOTS) {
         PF("[%s] too many snapshots!\n", __func__);
@@ -615,13 +619,12 @@ timestamp_t mysnap_create() {
         return -2;
     }
     int sysret;
-    store_chmod(sn_cfg->fstate->ssd_path);
-    sysret = mysnap_chmod2_777(sn_cfg->fstate->ssd_path);
+//    store_chmod(sn_cfg->fstate->ssd_path);
+//    sysret = mysnap_chmod2_777(sn_cfg->fstate->ssd_path);
 
 
-//    std::string lscmd;
-    lscmd.assign("ls -l ").append(sn_cfg->fstate->ssd_path).append(" > /tmp/after777.log");
-    system(lscmd.c_str());
+//    lscmd.assign("ls -l ").append(sn_cfg->fstate->ssd_path).append(" > /tmp/after777.log");
+//    system(lscmd.c_str());
 
 
     PF("[%s]:sysret is %d\n", __func__, sysret);

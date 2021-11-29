@@ -34,7 +34,7 @@
 #include "snapshot-api.h"
 
 
-#define SHOWPF
+//#define SHOWPF
 
 #define UNUSED __attribute__((unused))
 
@@ -160,7 +160,7 @@ int cloudfs_error(const char *error_str) {
     //
 
     fprintf(stderr, "CloudFS Error: %s\n", error_str);
-    fprintf(logfile, "[CloudFS Error]: %s \t[ERRNO]: %d: %s\n", error_str, -ret, strerror(errno));
+//    fprintf(logfile, "[CloudFS Error]: %s \t[ERRNO]: %d: %s\n", error_str, -ret, strerror(errno));
 
     /* FUSE always returns -errno to caller (yes, it is negative errno!) */
     return ret;
@@ -262,7 +262,7 @@ void get_path_s(char *full_path, const char *pathname, int bufsize) {
         snprintf(full_path, bufsize, "%s%s", fstate->ssd_path, pathname);
     }
 
-    PF("[%s]\t pathname is %s\n", __func__, pathname);
+//    PF("[%s]\t pathname is %s\n", __func__, pathname);
 }
 
 //void get_path_f(char *full_path, const char *pathname, int bufsize) {
@@ -310,7 +310,11 @@ int cloudfs_ioctl(const char *path, int cmd, void *arg,
 
 
         int ret=mysnap_install(*(long*)data);
-        mysnap_store();
+
+        PF("[%s] testing uninstall!\n",__func__);
+//        mysnap_uninstall(*(long*)data);
+//        ret=mysnap_install(*(long*)data);
+//        mysnap_store();
         return ret;
     } else if (cmd==CLOUDFS_UNINSTALL_SNAPSHOT) {
 
@@ -1832,7 +1836,7 @@ int cloudfs_start(struct cloudfs_state *state,
 
 
     strftime(log_path, sizeof(log_path), "/tmp/cloudfs%Y-%m-%d-%H-%M.log", timeinfo);
-    logfile = fopen("/tmp/cloudfs.log", "w");
+    logfile = fopen("/tmp/cloudfs.log", "a");
 //    logfile = fopen(log_path, "a");
     PF("\n\n\n\n\n\n\n\n\nRuntime is %s\n", ctime(&now));
 
