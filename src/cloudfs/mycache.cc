@@ -508,6 +508,65 @@ DLinkedNode *remove_tail() {
 
 
 
+//void mycache_rebuild() {
+//
+//    total_size = 0;
+//
+//    head = new DLinkedNode();
+//    tail = new DLinkedNode();
+//    head->next = tail;
+//    tail->prev = head;
+//    std::string cachemaster_path = cachemaster_path_();
+////    char cachemaster_path[MAX_PATH_LEN];
+////    get_cachemaster_path(cachemaster_path, MAX_PATH_LEN);
+//    PF("[%s]\n",__func__);
+//
+//
+//    if (file_exist(cachemaster_path.c_str())) {
+//        struct stat statbuf;
+//        lstat(cachemaster_path.c_str(), &statbuf);
+//        if(statbuf.st_size !=0){
+//            std::ifstream master(cachemaster_path.c_str());
+//            std::string key;
+//            size_t size;
+//            int dirty;
+//            while (master >> key >> size >> dirty) {
+//                total_size += size;
+//                DLinkedNode *node = new DLinkedNode(key, size, dirty);
+//                node->next = head->next;
+//                node->prev = head;
+//                head->next->prev = node;
+//                head->next = node;
+//            }
+//            master.close();
+//        }else{
+//            PF("[%s]file is empty\n",__func__);
+//        }
+//
+//    }else{
+//        PF("[%s]file not exist\n",__func__);
+//    }
+//
+//}
+//
+//void mycache_store() {
+//    DLinkedNode *n;
+////    char cachemaster_path[MAX_PATH_LEN];
+//    std::string cachemaster_path = cachemaster_path_();
+////    get_cachemaster_path(cachemaster_path, MAX_PATH_LEN);
+//    PF("[%s]%d\n",__func__, __LINE__);
+//    if(!file_exist(cachemaster_path.c_str())){
+//        PF("[%s]%d not exist\n",__func__, __LINE__);
+//        return;
+//    }
+//    std::ofstream master(cachemaster_path.c_str());
+//    for (n = tail->prev; n != head; n = n->prev) {
+//        master << n->key << " " << n->size << " " << n->dirty << "\n";
+//    }
+//    master.close();
+//}
+
+
 void mycache_rebuild() {
 
     total_size = 0;
@@ -517,54 +576,32 @@ void mycache_rebuild() {
     head->next = tail;
     tail->prev = head;
     std::string cachemaster_path = cachemaster_path_();
-//    char cachemaster_path[MAX_PATH_LEN];
-//    get_cachemaster_path(cachemaster_path, MAX_PATH_LEN);
-    PF("[%s]\n",__func__);
 
 
     if (file_exist(cachemaster_path.c_str())) {
-        struct stat statbuf;
-        lstat(cachemaster_path.c_str(), &statbuf);
-        if(statbuf.st_size !=0){
-            std::ifstream master(cachemaster_path.c_str());
-            std::string key;
-            size_t size;
-            int dirty;
-            while (master >> key >> size >> dirty) {
-                total_size += size;
-                DLinkedNode *node = new DLinkedNode(key, size, dirty);
-                node->next = head->next;
-                node->prev = head;
-                head->next->prev = node;
-                head->next = node;
-            }
-            master.close();
-        }else{
-            PF("[%s]file is empty\n",__func__);
+        std::ifstream master(cachemaster_path.c_str());
+        std::string key;
+        size_t size;
+        int dirty;
+        while (master >> key >> size >> dirty) {
+            total_size += size;
+            DLinkedNode *node = new DLinkedNode(key, size, dirty);
+            node->next = head->next;
+            node->prev = head;
+            head->next->prev = node;
+            head->next = node;
         }
 
-    }else{
-        PF("[%s]file not exist\n",__func__);
+        master.close();
     }
-
 }
 
 void mycache_store() {
     DLinkedNode *n;
-//    char cachemaster_path[MAX_PATH_LEN];
     std::string cachemaster_path = cachemaster_path_();
-//    get_cachemaster_path(cachemaster_path, MAX_PATH_LEN);
-    PF("[%s]%d\n",__func__, __LINE__);
-    if(!file_exist(cachemaster_path.c_str())){
-        PF("[%s]%d not exist\n",__func__, __LINE__);
-        return;
-    }
     std::ofstream master(cachemaster_path.c_str());
     for (n = tail->prev; n != head; n = n->prev) {
         master << n->key << " " << n->size << " " << n->dirty << "\n";
     }
     master.close();
 }
-
-
-

@@ -571,6 +571,8 @@ int mysnap_restore(long timestamp) {
     cloud_get(tar_path_s.c_str(), tar_path.c_str());
 //    cloud_get_object(BUCKET, tar_path.c_str(), get_buffer);
     int sysret = mysnap_untar(tar_path_s, root);
+
+    restore_chmod(tar_path_s.c_str());
 //    restore_chmod(root.c_str());
     if (sysret < 0) {
         PF("[%s]:sysret < 0 \n", __func__);
@@ -632,6 +634,9 @@ timestamp_t mysnap_create() {
 
     timestamp_t current_time = get_msec();
     PF("[%s]:current time is %ld\n", __func__, current_time);
+    store_chmod(sn_cfg->fstate->ssd_path);
+    mysnap_chmod2_777(sn_cfg->fstate->ssd_path);
+
 
     sysret = mysnap_tar(current_time);
     PF("[%s]:sysret is %d\n", __func__, sysret);
