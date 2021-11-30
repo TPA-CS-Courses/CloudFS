@@ -847,7 +847,7 @@ int store_chmod(const char *path) {
 int restore_chmod_(const char *fpath, const struct stat *sb, int typeflag, struct FTW *ftwbuf) {
     mode_t mode;
     int ret = lgetxattr(fpath, "user.chmod_mode", &mode, sizeof(mode_t));
-    if (ret != 0) {
+    if (ret < 0) {
         PF("[%s]:\t no mode saved\n", __func__);
         return 0;
     }else{
