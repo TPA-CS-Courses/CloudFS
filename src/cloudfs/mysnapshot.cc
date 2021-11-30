@@ -572,7 +572,7 @@ int mysnap_restore(long timestamp) {
 //    cloud_get_object(BUCKET, tar_path.c_str(), get_buffer);
     int sysret = mysnap_untar(tar_path_s, root);
 
-    restore_chmod(tar_path_s.c_str());
+    restore_chmod(root.c_str());
 //    restore_chmod(root.c_str());
     if (sysret < 0) {
         PF("[%s]:sysret < 0 \n", __func__);
