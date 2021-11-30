@@ -737,7 +737,7 @@ int mydedup_unlink(const char *pathname) {
 
 
 int mydedup_truncate(const char *pathname UNUSED, off_t newsize UNUSED) {
-    NOI();
+//    NOI();
     int ret = 0;
     PF("[%s]:\t pathname: %s\n", __func__, pathname);
     char path_s[MAX_PATH_LEN];
