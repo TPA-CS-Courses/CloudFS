@@ -751,6 +751,12 @@ int mydedup_truncate(const char *pathname UNUSED, off_t newsize UNUSED) {
     } else {
 
 
+        if(access(path_s,W_OK) < 0){
+            PF("[%s]: cannot write");
+            return -EACCES;
+        }
+
+
         if (newsize <= de_cfg->fstate->threshold) {
             std::vector <seg_info_p> segs;
             mydedup_get_seginfo(path_s, segs);
