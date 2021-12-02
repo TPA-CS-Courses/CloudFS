@@ -399,7 +399,7 @@ int cloudfs_getattr_(const char *pathname, struct stat *statbuf) {
     char path_s[MAX_PATH_LEN];
     get_path_s(path_s, pathname, MAX_PATH_LEN);
 
-    chmod_recover(path_s);
+//    chmod_recover(path_s);
     ret = lstat(path_s, statbuf);
 
     if (ret < 0) {
@@ -465,7 +465,7 @@ int cloudfs_open(const char *pathname, struct fuse_file_info *fi) {
     char path_s[MAX_PATH_LEN];
 //    char path_c[MAX_PATH_LEN];
     get_path_s(path_s, pathname, MAX_PATH_LEN);
-    chmod_recover(path_s);
+//    chmod_recover(path_s);
 
 //    get_path_c(path_c, path_s);
 
@@ -1081,7 +1081,7 @@ int cloudfs_write(const char *pathname UNUSED, const char *buf UNUSED, size_t si
                   struct fuse_file_info *fi) {
     char path_s[MAX_PATH_LEN];
     get_path_s(path_s, pathname, MAX_PATH_LEN);
-    chmod_recover(path_s);
+//    chmod_recover(path_s);
 
     struct stat statbuf;
     lstat(path_s, &statbuf);
@@ -1497,8 +1497,8 @@ int cloudfs_chmod(const char *pathname UNUSED, mode_t mode UNUSED) {
     }
     fprintf(logfile, "[%s]: path_s: %s is not on cloud\n", __func__, path_s);
     PF("[utimens] path_s is %s\n", path_s);
-    TRY(chmod(path_s, mode | 0666));
-    TRY(lsetxattr(path_s, "user.chmod_mode", &mode, sizeof(mode_t), 0));
+//    TRY(chmod(path_s, mode | 0666));
+//    TRY(lsetxattr(path_s, "user.chmod_mode", &mode, sizeof(mode_t), 0));
     TRY(chmod(path_s, mode));
 
 
@@ -1514,16 +1514,16 @@ void chmod_recover(const char *path_s) {
 //    PF("[%s] recover chmod for %s\n", __func__, path_s);
 //    PF("[%s] check if %s exist: %d\n", __func__, path_s, file_exist(path_s));
 //
-    if(file_exist(path_s)){
-        mode_t mode;
-        int ret = lgetxattr(path_s, "user.chmod_mode", &mode, sizeof(mode_t));
-        if(ret !=0){
-            PF("[%s]:\t no mode saved\n", __func__);
-            return;
-        }
-        PF("[%s]:\t mode_t is: %zu\n", __func__, mode);
-        chmod(path_s, mode);
-    }
+//    if(file_exist(path_s)){
+//        mode_t mode;
+//        int ret = lgetxattr(path_s, "user.chmod_mode", &mode, sizeof(mode_t));
+//        if(ret !=0){
+//            PF("[%s]:\t no mode saved\n", __func__);
+//            return;
+//        }
+//        PF("[%s]:\t mode_t is: %zu\n", __func__, mode);
+//        chmod(path_s, mode);
+//    }
 }
 
 int cloudfs_rmdir(const char *pathname UNUSED) {
