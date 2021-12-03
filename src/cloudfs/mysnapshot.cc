@@ -835,7 +835,7 @@ int store_chmod_(const char *fpath, const struct stat *sb, int typeflag, struct 
     lstat(fpath, &statbuf);
     chmod(fpath, 0666);
     lsetxattr(fpath, "user.chmod_mode", &(statbuf.st_mode), sizeof(mode_t), 0);
-    PF("[%s]:\t stored %s mode %zu to user.chmod_mode\n", __func__, fpath, statbuf.st_mode);
+    fprintf(sn_cfg->logfile, "[%s]:\t stored %s mode %zu to user.chmod_mode\n", __func__, fpath, statbuf.st_mode);
     chmod(fpath, statbuf.st_mode);
     return 0;
 }
@@ -851,7 +851,7 @@ int restore_chmod_(const char *fpath, const struct stat *sb, int typeflag, struc
         PF("[%s]:\t no mode saved\n", __func__);
         return 0;
     }else{
-        PF("[%s]:\t restored %s mode %zu to st_mode\n", __func__, fpath, mode);
+        fprintf(sn_cfg->logfile, "[%s]:\t restored %s mode %zu to st_mode\n", __func__, fpath, mode);
     }
     chmod(fpath, mode);
     return 0;

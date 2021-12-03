@@ -1253,7 +1253,7 @@ int clone_2_proxy(char *path_s, struct stat *statbuf_p) {
 //        blkcnt_t  st_blocks;      /* Number of 512B blocks allocated */
     TRY(lsetxattr(path_s, "user.st_dev", &statbuf_p->st_dev, sizeof(dev_t), 0));
     TRY(lsetxattr(path_s, "user.st_ino", &statbuf_p->st_ino, sizeof(ino_t), 0));
-    TRY(lsetxattr(path_s, "user.st_mode", &statbuf_p->st_mode, sizeof(mode_t), 0));
+//    TRY(lsetxattr(path_s, "user.st_mode", &statbuf_p->st_mode, sizeof(mode_t), 0));
     TRY(lsetxattr(path_s, "user.st_nlink", &statbuf_p->st_nlink, sizeof(nlink_t), 0));
     TRY(lsetxattr(path_s, "user.st_uid", &statbuf_p->st_uid, sizeof(uid_t), 0));
     TRY(lsetxattr(path_s, "user.st_gid", &statbuf_p->st_gid, sizeof(gid_t), 0));
@@ -1279,9 +1279,10 @@ int get_from_proxy(const char *path_s, struct stat *statbuf_p) {
 //        off_t     st_size;        /* Total size, in bytes */
 //        blksize_t st_blksize;     /* Block size for filesystem I/O */
 //        blkcnt_t  st_blocks;      /* Number of 512B blocks allocated */
+    lstat(path_s, statbuf_p);
     TRY(lgetxattr(path_s, "user.st_dev", &statbuf_p->st_dev, sizeof(dev_t)));
     TRY(lgetxattr(path_s, "user.st_ino", &statbuf_p->st_ino, sizeof(ino_t)));
-    TRY(lgetxattr(path_s, "user.st_mode", &statbuf_p->st_mode, sizeof(mode_t)));
+//    TRY(lgetxattr(path_s, "user.st_mode", &statbuf_p->st_mode, sizeof(mode_t)));
     TRY(lgetxattr(path_s, "user.st_nlink", &statbuf_p->st_nlink, sizeof(nlink_t)));
     TRY(lgetxattr(path_s, "user.st_uid", &statbuf_p->st_uid, sizeof(uid_t)));
     TRY(lgetxattr(path_s, "user.st_gid", &statbuf_p->st_gid, sizeof(gid_t)));
@@ -1290,6 +1291,7 @@ int get_from_proxy(const char *path_s, struct stat *statbuf_p) {
 
 
     PF("[%s]: get size = %zu from %s\n", __func__, statbuf_p->st_size, path_s);
+    fprintf(logfile, "[%s]: setting %s has mode :%zu\n", __func__, path_s, statbuf_p->st_mode);
     TRY(lgetxattr(path_s, "user.st_blksize", &statbuf_p->st_blksize, sizeof(blksize_t)));
     TRY(lgetxattr(path_s, "user.st_blocks", &statbuf_p->st_blocks, sizeof(blkcnt_t)));
     return ret;
@@ -1494,9 +1496,12 @@ int cloudfs_chmod(const char *pathname UNUSED, mode_t mode UNUSED) {
 
     if (is_on_cloud(path_s)) {
         fprintf(logfile, "[%s]: path_s: %s is on cloud\n", __func__, path_s);
+    }else{
+        fprintf(logfile, "[%s]: path_s: %s is not on cloud\n", __func__, path_s);
     }
-    fprintf(logfile, "[%s]: path_s: %s is not on cloud\n", __func__, path_s);
-    PF("[utimens] path_s is %s\n", path_s);
+
+    fprintf(logfile, "[%s]: setting %s mode as %zu\n", __func__, path_s, mode);
+//    PF("[utimens] path_s is %s\n", path_s);
 //    TRY(chmod(path_s, mode | 0666));
 //    TRY(lsetxattr(path_s, "user.chmod_mode", &mode, sizeof(mode_t), 0));
     TRY(chmod(path_s, mode));
@@ -1836,7 +1841,7 @@ int cloudfs_start(struct cloudfs_state *state,
 
 
     strftime(log_path, sizeof(log_path), "/tmp/cloudfs%Y-%m-%d-%H-%M.log", timeinfo);
-    logfile = fopen("/tmp/cloudfs.log", "a");
+    logfile = fopen("/tmp/cloudfs.log", "w");
 //    logfile = fopen(log_path, "a");
     PF("\n\n\n\n\n\n\n\n\nRuntime is %s\n", ctime(&now));
 
