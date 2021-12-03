@@ -452,6 +452,7 @@ int mydedup_write(const char *pathname UNUSED, const char *buf UNUSED, size_t si
 //        ret = cloudfs_write_node(pathname, buf, size, offset, fi);
         int fd = open(path_s, O_WRONLY);
         ret = pwrite(fd, buf, size, offset);
+        close(fd);
 
         //read stat
         struct stat statbuf;

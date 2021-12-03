@@ -1,6 +1,38 @@
-// ref: https://github.com/libfuse/libfuse/blob/master/example/passthrough.c
-// ref: https://github.com/libfuse/libfuse/blob/master/example/passthrough.c
-// ref: https://github.com/libfuse/libfuse/blob/master/example/passthrough.c
+/**
+ * @file cloudfs.cc
+ * @brief CloudFS main program
+ *
+ * This is a program simulating the behavior of a FTL controller in an SSD.
+ *
+ * Mapping scheme: page mapping
+ * Mapping is done using two tables
+ * pba mapping table (PMT) maps every LBA to PBA(PMT[LBA] = PBA)
+ * lba mapping table (LMT) maps every PBA to LBA(LMT[PBA] = LBA)
+ * both tables are initialized with values that they should not be able to reach.
+ * So we can determine wether the address has been mapped or not.
+ *
+ * Garbage Collection Policy: Threshold controlled most valid or youngest
+ * The Garbage Collection Will choose the youngest block to clean or the block that have least valid pages.
+ * Which policy GC will choose is controlled by a POLICY_THRESHOLD.
+ * If total writes is less than the threshold, the GC algorithm will choose the block that have least valid pages
+ * If total writes exceeds the threshold, the GC algorithm will choose the youngest block
+ *
+ * Garbage Collection Method: all blocks except one block is reserved for cleaning buffering
+ * When all other blocks are filled up. GC will choose one data block to clean.
+ * It copies all the valid pages into that reserved block and erase the original block.
+ * The original block is marked as the new reserved block and the current block pointer
+ * is pointed at the old reserved block so new data will be written there.
+ *
+ * Wear Leveling: The main point of Wear performance improvement is
+ * 1. Finer grain mapping: page mapping
+ * 2. Always Choosing Youngest empty block to write
+ * 3. Garbage Collection Policy
+ *
+ * The wear of the blocks are tracked using wear count table WCT[]
+ * it takes physical block index and returns the wear of that block
+ *
+ * @author Liangdong Xu <liangdox@andrew.cmu.edu>
+ */
 #include <ctype.h>
 #include <dirent.h>
 #include <errno.h>
@@ -1291,7 +1323,7 @@ int get_from_proxy(const char *path_s, struct stat *statbuf_p) {
 
 
     PF("[%s]: get size = %zu from %s\n", __func__, statbuf_p->st_size, path_s);
-    fprintf(logfile, "[%s]: setting %s has mode :%zu\n", __func__, path_s, statbuf_p->st_mode);
+//    fprintf(logfile, "[%s]: setting %s has mode :%zu\n", __func__, path_s, statbuf_p->st_mode);
     TRY(lgetxattr(path_s, "user.st_blksize", &statbuf_p->st_blksize, sizeof(blksize_t)));
     TRY(lgetxattr(path_s, "user.st_blocks", &statbuf_p->st_blocks, sizeof(blkcnt_t)));
     return ret;
