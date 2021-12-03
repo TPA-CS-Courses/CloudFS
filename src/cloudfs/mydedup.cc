@@ -35,7 +35,7 @@
 #define BUF_SIZE (1024)
 
 
-//#define SHOWPF
+#define SHOWPF
 
 #define UNUSED __attribute__((unused))
 
@@ -449,13 +449,15 @@ int mydedup_write(const char *pathname UNUSED, const char *buf UNUSED, size_t si
 
     if (loc == ON_SSD) {
         PF("[%s]:\t pathname: %s is local\n", __func__, path_s, offset);
-        ret = cloudfs_write_node(pathname, buf, size, offset, fi);
+//        ret = cloudfs_write_node(pathname, buf, size, offset, fi);
+        int fd = open(path_s, O_WRONLY);
+        ret = pwrite(fd, buf, size, offset);
 
         //read stat
         struct stat statbuf;
         lstat(path_s, &statbuf);
         //upload and save stat to proxy
-        if (statbuf.st_size > de_cfg->fstate->threshold) {
+        if (offset + size > de_cfg->fstate->threshold) {
             PF("[%s] uploading %s", __func__, path_s);
             mydedup_upload_file(path_s);
             clone_2_proxy(path_s, &statbuf);
@@ -737,7 +739,7 @@ int mydedup_unlink(const char *pathname) {
 
 
 int mydedup_truncate(const char *pathname UNUSED, off_t newsize UNUSED) {
-//    NOI();
+    NOI();
     int ret = 0;
     PF("[%s]:\t pathname: %s\n", __func__, pathname);
     char path_s[MAX_PATH_LEN];
@@ -749,12 +751,10 @@ int mydedup_truncate(const char *pathname UNUSED, off_t newsize UNUSED) {
             return -errno;
         }
     } else {
-
-
-        if(access(path_s,W_OK) < 0){
-            PF("[%s]: cannot write");
-            return -EACCES;
-        }
+//        if(access(path_s,W_OK) < 0){
+//            PF("[%s]: cannot write");
+//            return -EACCES;
+//        }
 
 
         if (newsize <= de_cfg->fstate->threshold) {
