@@ -37,7 +37,7 @@
 #include "snapshot-api.h"
 
 #define BUF_SIZE (1024)
-#define SHOWPF
+//#define SHOWPF
 
 #define UNUSED __attribute__((unused))
 
